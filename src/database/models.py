@@ -195,6 +195,39 @@ class CrawlState(Base):
     )
 
 
+class InstitutionCrawlState(Base):
+    """Per-institution crawl state for multi-institution crawling."""
+
+    __tablename__ = "institution_crawl_state"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    institution_id = Column(String(50), unique=True, nullable=False)  # e.g., I136199984
+    institution_name = Column(String(500), nullable=True)
+
+    # Pagination state (for resumable crawling)
+    last_cursor = Column(String(500), nullable=True)
+    cursor_valid_until = Column(DateTime, nullable=True)
+
+    # Incremental crawl state
+    last_publication_date = Column(String(10), nullable=True)  # Latest paper date (YYYY-MM-DD)
+    last_crawl_completed = Column(DateTime, nullable=True)
+
+    # Statistics
+    total_works_crawled = Column(Integer, default=0)
+
+    # Status
+    status = Column(String(50), default="idle")  # idle/running/completed/failed
+    error_message = Column(Text, nullable=True)
+
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    __table_args__ = (
+        Index("idx_inst_crawl_institution", "institution_id"),
+        Index("idx_inst_crawl_status", "status"),
+    )
+
+
 # Database engine and session management
 _engine = None
 _SessionLocal = None

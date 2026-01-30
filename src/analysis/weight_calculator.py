@@ -59,6 +59,10 @@ class WeightCalculator:
         Returns:
             Position factor between 0 and 1
         """
+        # Guard against invalid total_authors
+        if total_authors < 1:
+            total_authors = 1
+
         def author_factor(position: int, is_corresponding: bool) -> float:
             is_first = position == 0
             is_last = position == total_authors - 1

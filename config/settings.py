@@ -8,6 +8,19 @@ from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
+# Target institutions for multi-institution crawling
+TARGET_INSTITUTIONS = {
+    "I99065089": "清华大学",
+    "I20231570": "北京大学",
+    "I126520041": "中国科学技术大学",
+    "I183067930": "上海交通大学",
+    "I24943067": "复旦大学",
+    "I76130692": "浙江大学",
+    "I881766915": "南京大学",
+    "I16365422": "合肥工业大学",
+}
+
+
 class ScopeConfig(BaseSettings):
     """Scope configuration for data crawling."""
     model_config = SettingsConfigDict(
@@ -106,6 +119,20 @@ class SchedulerSettings(BaseSettings):
     analysis_cron_hour: int = 4
 
 
+class MultiCrawlerSettings(BaseSettings):
+    """Multi-institution crawler configuration."""
+    model_config = SettingsConfigDict(
+        env_prefix="COAUTHOR_MULTI_CRAWLER__",
+        env_file=".env",
+        extra="ignore"
+    )
+
+    max_concurrent: int = 3  # Maximum concurrent institutions
+    rate_limit_per_crawler: float = 2.5  # Rate limit per crawler (total ~8 req/s)
+    commit_batch_size: int = 500  # Works per batch commit
+    cursor_ttl_hours: int = 24  # Cursor validity period
+
+
 class Settings:
     """Main settings class combining all configurations."""
 
@@ -117,6 +144,7 @@ class Settings:
         self.analysis = AnalysisSettings()
         self.api = APISettings()
         self.scheduler = SchedulerSettings()
+        self.multi_crawler = MultiCrawlerSettings()
 
 
 # Global settings instance
