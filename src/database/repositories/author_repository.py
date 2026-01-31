@@ -27,26 +27,31 @@ class AuthorRepository:
         offset: int = 0,
         canonical_only: bool = True
     ) -> list[Author]:
-        """Search authors by name (case-insensitive partial match).
+        """Search authors by name (case-insensitive exact match).
 
         Args:
             canonical_only: If True, only return deduplicated main records
         """
-        pattern = f"%{query}%"
-
-        base_query = self.session.query(Author).filter(Author.display_name.ilike(pattern))
-
-        # Only return canonical (deduplicated) records by default
+        # Build base filter - exact match (case-insensitive)
+        base_filter = func.lower(Author.display_name) == func.lower(query)
         if canonical_only:
-            base_query = base_query.filter(Author.is_canonical == True)
+            base_filter = base_filter & (Author.is_canonical == True)
 
-        results = (
-            base_query
-            .order_by(Author.works_count.desc())
-            .offset(offset)
-            .limit(limit)
-            .all()
-        )
+        # Get all matching authors
+        all_authors = self.session.query(Author).filter(base_filter).all()
+
+        # Calculate merged works count for each author and sort
+        authors_with_counts = []
+        for author in all_authors:
+            merged_count = self.get_merged_works_count(author.id)
+            authors_with_counts.append((author, merged_count))
+
+        # Sort by merged works count (descending)
+        authors_with_counts.sort(key=lambda x: x[1], reverse=True)
+
+        # Apply pagination
+        paginated = authors_with_counts[offset:offset + limit]
+        results = [author for author, _ in paginated]
 
         return results
 
@@ -57,38 +62,32 @@ class AuthorRepository:
         offset: int = 0,
         canonical_only: bool = True
     ) -> tuple[list[Author], int]:
-        """Search authors by name with total count.
+        """Search authors by name with total count (case-insensitive exact match).
 
         Args:
             canonical_only: If True, only return deduplicated main records
         """
-        pattern = f"%{query}%"
-
-        # Build base filter
-        base_filter = Author.display_name.ilike(pattern)
+        # Build base filter - exact match (case-insensitive)
+        base_filter = func.lower(Author.display_name) == func.lower(query)
         if canonical_only:
-            base_filter = (Author.display_name.ilike(pattern)) & (Author.is_canonical == True)
+            base_filter = base_filter & (Author.is_canonical == True)
 
-        # Get total count (with simple caching)
-        cache_key = f"search_count:{query.lower()}:{'canonical' if canonical_only else 'all'}"
-        if cache_key in _search_count_cache:
-            total = _search_count_cache[cache_key]
-        else:
-            count_query = self.session.query(func.count(Author.id)).filter(base_filter)
-            total = count_query.scalar() or 0
-            # Cache for this session (simple dict cache)
-            if len(_search_count_cache) < 1000:  # Limit cache size
-                _search_count_cache[cache_key] = total
+        # Get all matching authors first (for sorting by merged works count)
+        all_authors = self.session.query(Author).filter(base_filter).all()
+        total = len(all_authors)
 
-        # Get results
-        results = (
-            self.session.query(Author)
-            .filter(base_filter)
-            .order_by(Author.works_count.desc())
-            .offset(offset)
-            .limit(limit)
-            .all()
-        )
+        # Calculate merged works count for each author and sort
+        authors_with_counts = []
+        for author in all_authors:
+            merged_count = self.get_merged_works_count(author.id)
+            authors_with_counts.append((author, merged_count))
+
+        # Sort by merged works count (descending)
+        authors_with_counts.sort(key=lambda x: x[1], reverse=True)
+
+        # Apply pagination
+        paginated = authors_with_counts[offset:offset + limit]
+        results = [author for author, _ in paginated]
 
         return results, total
 
