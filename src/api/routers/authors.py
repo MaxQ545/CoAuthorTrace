@@ -28,6 +28,12 @@ class AuthorIdInfo(BaseModel):
     works_count: int = 0
 
 
+class InstitutionFrequency(BaseModel):
+    """Institution frequency for an author."""
+    name: str
+    count: int
+
+
 class AuthorResponse(BaseModel):
     """Author response model."""
     id: str
@@ -37,6 +43,9 @@ class AuthorResponse(BaseModel):
     cited_by_count: int = 0
     last_known_institution_id: Optional[str] = None
     last_known_institution_name: Optional[str] = None
+    primary_institution_name: Optional[str] = None
+    primary_institution_count: Optional[int] = None
+    top_institutions: Optional[list[InstitutionFrequency]] = None
     is_canonical: bool = True
     alias_ids: Optional[list[str]] = None  # Merged author IDs (simple list)
     all_ids: Optional[list[AuthorIdInfo]] = None  # All IDs with their ORCIDs
@@ -45,7 +54,16 @@ class AuthorResponse(BaseModel):
         from_attributes = True
 
     @classmethod
-    def from_author(cls, author, works_count: int = None, cited_by_count: int = None, all_ids_info: list = None):
+    def from_author(
+        cls,
+        author,
+        works_count: int = None,
+        cited_by_count: int = None,
+        all_ids_info: list = None,
+        primary_institution_name: Optional[str] = None,
+        primary_institution_count: Optional[int] = None,
+        top_institutions: Optional[list] = None,
+    ):
         """Create response from Author model with computed stats."""
         import json
         alias_ids = None
@@ -63,6 +81,9 @@ class AuthorResponse(BaseModel):
             cited_by_count=cited_by_count if cited_by_count is not None else author.cited_by_count,
             last_known_institution_id=author.last_known_institution_id,
             last_known_institution_name=author.last_known_institution_name,
+            primary_institution_name=primary_institution_name,
+            primary_institution_count=primary_institution_count,
+            top_institutions=top_institutions,
             is_canonical=author.is_canonical if author.is_canonical is not None else True,
             alias_ids=alias_ids,
             all_ids=all_ids_info,
@@ -338,11 +359,22 @@ async def get_author(
     all_ids_info = repo.get_all_ids_info(author.id)
     all_ids_response = [AuthorIdInfo(**info) for info in all_ids_info]
 
+    # Compute top institutions from authorship affiliations
+    institution_freqs = repo.get_institution_frequencies(author.id, limit=5)
+    primary_institution_name = (
+        institution_freqs[0]["name"] if institution_freqs else author.last_known_institution_name
+    )
+    primary_institution_count = institution_freqs[0]["count"] if institution_freqs else None
+    institution_freq_models = [InstitutionFrequency(**item) for item in institution_freqs]
+
     return AuthorResponse.from_author(
         author,
         works_count=works_count,
         cited_by_count=cited_by_count,
-        all_ids_info=all_ids_response
+        all_ids_info=all_ids_response,
+        primary_institution_name=primary_institution_name,
+        primary_institution_count=primary_institution_count,
+        top_institutions=institution_freq_models,
     )
 
 

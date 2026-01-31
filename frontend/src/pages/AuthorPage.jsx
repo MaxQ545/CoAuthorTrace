@@ -102,10 +102,25 @@ function AuthorPage() {
             <h1 className="text-2xl font-bold text-gray-900">
               {author?.display_name}
             </h1>
-            {author?.last_known_institution_name && (
+            {(author?.primary_institution_name || author?.last_known_institution_name) && (
               <p className="text-gray-600 mt-2">
-                🏛️ {author.last_known_institution_name}
+                🏛️ {author.primary_institution_name || author.last_known_institution_name}
               </p>
+            )}
+            {author?.top_institutions && author.top_institutions.length > 0 && (
+              <div className="mt-3">
+                <div className="text-xs text-gray-500 mb-2">高频机构</div>
+                <div className="flex flex-wrap gap-2">
+                  {author.top_institutions.map((inst) => (
+                    <span
+                      key={`${inst.name}-${inst.count}`}
+                      className="text-xs bg-gray-100 text-gray-700 px-2 py-1 rounded-full"
+                    >
+                      {inst.name} · {inst.count}
+                    </span>
+                  ))}
+                </div>
+              </div>
             )}
           </div>
 

@@ -266,7 +266,10 @@ class MultiInstitutionCrawler:
                 session=session,
             ):
                 try:
-                    work_dict, authors, authorships = parse_work(work_data)
+                    work_dict, authors, authorships = parse_work(
+                        work_data,
+                        preferred_institution_ids=[institution_id],
+                    )
 
                     # Track max publication date for incremental
                     pub_date_str = work_data.get("publication_date")
@@ -428,6 +431,12 @@ class MultiInstitutionCrawler:
                 session.add(author)
                 new_authors += 1
             else:
+                # Refresh core fields when new data is present
+                if author_data.get("orcid"):
+                    existing.orcid = author_data["orcid"]
+                if author_data.get("last_known_institution_id") or author_data.get("last_known_institution_name"):
+                    existing.last_known_institution_id = author_data.get("last_known_institution_id")
+                    existing.last_known_institution_name = author_data.get("last_known_institution_name")
                 # Update stats if available
                 if author_data.get("works_count"):
                     existing.works_count = author_data["works_count"]

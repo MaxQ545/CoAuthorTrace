@@ -126,6 +126,36 @@ class TestParseWork:
         assert len(authors) == 1
         assert authors[0]["id"] == "A1111111111"
 
+    def test_parse_work_preferred_institution(self):
+        """Prefer matching institution IDs when multiple affiliations exist."""
+        work_data = {
+            "id": "https://openalex.org/W1234567890",
+            "title": "Multi-affiliation Paper",
+            "authorships": [
+                {
+                    "author": {
+                        "id": "https://openalex.org/A1111111111",
+                        "display_name": "John Doe",
+                    },
+                    "institutions": [
+                        {
+                            "id": "https://openalex.org/I1111111111",
+                            "display_name": "Institute of Art",
+                        },
+                        {
+                            "id": "https://openalex.org/I2222222222",
+                            "display_name": "Beihang University",
+                        },
+                    ],
+                },
+            ],
+        }
+
+        _, authors, _ = parse_work(work_data, preferred_institution_ids=["I2222222222"])
+
+        assert authors[0]["last_known_institution_id"] == "I2222222222"
+        assert authors[0]["last_known_institution_name"] == "Beihang University"
+
 
 class TestOpenAlexClient:
     """Tests for OpenAlexClient class."""

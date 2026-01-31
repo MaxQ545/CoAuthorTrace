@@ -346,12 +346,17 @@ class OpenAlexClient:
         return await self._request(f"/works/{work_id}")
 
 
-def parse_work(work: dict) -> tuple[dict, list[dict], list[dict]]:
+def parse_work(
+    work: dict,
+    preferred_institution_ids: Optional[list[str]] = None,
+) -> tuple[dict, list[dict], list[dict]]:
     """
     Parse OpenAlex work response into database-ready dicts.
 
     Args:
         work: Raw work data from OpenAlex
+        preferred_institution_ids: Optional list of institution IDs to prioritize
+            when selecting the author's institution from a work.
 
     Returns:
         Tuple of (work_dict, list of author_dicts, list of authorship_dicts)
@@ -392,6 +397,24 @@ def parse_work(work: dict) -> tuple[dict, list[dict], list[dict]]:
     authorships = []
     raw_authorships = work.get("authorships", [])
 
+    preferred_ids = set(preferred_institution_ids or [])
+
+    def _normalize_inst_id(inst_id: str) -> Optional[str]:
+        return inst_id.replace("https://openalex.org/", "") if inst_id else None
+
+    def _select_institution(institutions: list[dict]) -> tuple[dict, Optional[str]]:
+        if not institutions:
+            return {}, None
+
+        if preferred_ids:
+            for inst in institutions:
+                inst_id = _normalize_inst_id(inst.get("id", ""))
+                if inst_id in preferred_ids:
+                    return inst, inst_id
+
+        inst = institutions[0]
+        return inst, _normalize_inst_id(inst.get("id", ""))
+
     for idx, authorship in enumerate(raw_authorships):
         author = authorship.get("author") or {}
         author_id = author.get("id", "")
@@ -403,14 +426,19 @@ def parse_work(work: dict) -> tuple[dict, list[dict], list[dict]]:
 
         # Get institution info
         institutions = authorship.get("institutions", [])
-        last_institution = institutions[0] if institutions else {}
-        inst_id = last_institution.get("id", "")
+        if not institutions:
+            # Fallback to author's last known institution if available
+            author_inst = author.get("last_known_institution") or {}
+            if author_inst:
+                institutions = [author_inst]
+
+        last_institution, inst_id = _select_institution(institutions)
 
         author_dict = {
             "id": author_id,
             "display_name": author.get("display_name", "Unknown"),
             "orcid": author.get("orcid"),
-            "last_known_institution_id": inst_id.replace("https://openalex.org/", "") if inst_id else None,
+            "last_known_institution_id": _normalize_inst_id(inst_id),
             "last_known_institution_name": last_institution.get("display_name"),
         }
         authors.append(author_dict)

@@ -12,6 +12,7 @@ function AuthorCard({
 }) {
   const [showAllIds, setShowAllIds] = useState(false);
   const hasMultipleIds = author.all_ids && author.all_ids.length > 1;
+  const displayInstitution = author.primary_institution_name || author.last_known_institution_name;
 
   return (
     <div className="bg-white rounded-lg border border-gray-200 p-4 hover:shadow-md transition-shadow">
@@ -36,9 +37,9 @@ function AuthorCard({
             )}
           </div>
 
-          {author.last_known_institution_name && (
+          {displayInstitution && (
             <p className="text-sm text-gray-600 mt-1">
-              🏛️ {author.last_known_institution_name}
+              🏛️ {displayInstitution}
             </p>
           )}
 

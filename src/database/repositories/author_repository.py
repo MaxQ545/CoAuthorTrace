@@ -362,6 +362,45 @@ class AuthorRepository:
         results.sort(key=lambda x: x["works_count"], reverse=True)
         return results
 
+    def get_institution_frequencies(
+        self,
+        author_id: str,
+        limit: int = 5,
+    ) -> list[dict]:
+        """Get top institutions for an author based on authorship affiliations."""
+        import json
+        from collections import Counter
+
+        author = self.get_by_id(author_id)
+        if not author:
+            return []
+
+        all_ids = [author_id]
+        if author.alias_ids:
+            try:
+                all_ids.extend(json.loads(author.alias_ids))
+            except:
+                pass
+
+        rows = (
+            self.session.query(Authorship.raw_affiliation)
+            .filter(Authorship.author_id.in_(all_ids))
+            .filter(Authorship.raw_affiliation.isnot(None))
+            .all()
+        )
+
+        counter = Counter()
+        for (raw_affiliation,) in rows:
+            if not raw_affiliation:
+                continue
+            for inst in [item.strip() for item in raw_affiliation.split(";") if item.strip()]:
+                counter[inst] += 1
+
+        return [
+            {"name": name, "count": count}
+            for name, count in counter.most_common(limit)
+        ]
+
     def get_statistics(self) -> dict:
         """Get author statistics."""
         return {
