@@ -400,7 +400,7 @@ class AuthorRepository:
             to_year: Filter works up to this year (inclusive)
 
         Returns:
-            Tuple of (list of (author, works_count), total_count)
+            Tuple of (list of (author, works_count, cited_by_count), total_count)
         """
         import json
 
@@ -424,14 +424,17 @@ class AuthorRepository:
             # Get all authors for this institution
             authors = base_query.all()
 
-            # Calculate works count for each author within year range
+            # Calculate works count and cited_by_count for each author within year range
             results = []
             for author in authors:
                 works_count = self._get_merged_works_count_by_year(
                     author.id, from_year, to_year
                 )
                 if works_count > 0:  # Only include authors with works in range
-                    results.append((author, works_count))
+                    cited_by_count = self._get_merged_cited_by_count_by_year(
+                        author.id, from_year, to_year
+                    )
+                    results.append((author, works_count, cited_by_count))
 
             # Sort by works count
             results.sort(key=lambda x: x[1], reverse=True)
@@ -448,11 +451,12 @@ class AuthorRepository:
             .all()
         )
 
-        # Calculate merged works count for each author
+        # Calculate merged works count and cited_by_count for each author
         results = []
         for author in authors:
             merged_count = self.get_merged_works_count(author.id)
-            results.append((author, merged_count))
+            cited_by_count = self._get_merged_cited_by_count_by_year(author.id)
+            results.append((author, merged_count, cited_by_count))
 
         # Re-sort by merged count (in case merging changes the order)
         results.sort(key=lambda x: x[1], reverse=True)
@@ -484,6 +488,41 @@ class AuthorRepository:
         query = (
             self.session.query(func.count(func.distinct(Authorship.work_id)))
             .join(Work, Authorship.work_id == Work.id)
+            .filter(Authorship.author_id.in_(all_ids))
+        )
+
+        if from_year is not None:
+            query = query.filter(Work.publication_year >= from_year)
+        if to_year is not None:
+            query = query.filter(Work.publication_year <= to_year)
+
+        return query.scalar() or 0
+
+    def _get_merged_cited_by_count_by_year(
+        self,
+        author_id: str,
+        from_year: Optional[int] = None,
+        to_year: Optional[int] = None
+    ) -> int:
+        """Get total cited_by_count for an author's works within a year range."""
+        import json
+
+        author = self.get_by_id(author_id)
+        if not author:
+            return 0
+
+        # Get all IDs (main + aliases)
+        all_ids = [author_id]
+        if author.alias_ids:
+            try:
+                all_ids.extend(json.loads(author.alias_ids))
+            except:
+                pass
+
+        # Build query - sum cited_by_count of all distinct works by this author
+        query = (
+            self.session.query(func.sum(Work.cited_by_count))
+            .join(Authorship, Work.id == Authorship.work_id)
             .filter(Authorship.author_id.in_(all_ids))
         )
 

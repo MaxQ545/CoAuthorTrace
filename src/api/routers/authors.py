@@ -292,9 +292,9 @@ async def get_institution_ranking(
             display_name=author.display_name,
             orcid=author.orcid,
             works_count=works_count,
-            cited_by_count=author.cited_by_count or 0,
+            cited_by_count=cited_by_count,
         )
-        for idx, (author, works_count) in enumerate(results)
+        for idx, (author, works_count, cited_by_count) in enumerate(results)
     ]
 
     return InstitutionRankingResponse(
@@ -331,11 +331,19 @@ async def get_author(
     # Get merged works count
     works_count = repo.get_merged_works_count(author.id)
 
+    # Get merged cited_by_count (sum of all works' citations)
+    cited_by_count = repo._get_merged_cited_by_count_by_year(author.id)
+
     # Get all IDs info (with ORCIDs and individual works counts)
     all_ids_info = repo.get_all_ids_info(author.id)
     all_ids_response = [AuthorIdInfo(**info) for info in all_ids_info]
 
-    return AuthorResponse.from_author(author, works_count=works_count, all_ids_info=all_ids_response)
+    return AuthorResponse.from_author(
+        author,
+        works_count=works_count,
+        cited_by_count=cited_by_count,
+        all_ids_info=all_ids_response
+    )
 
 
 @router.get("/{author_id}/top-relations", response_model=TopRelationsResponse)
