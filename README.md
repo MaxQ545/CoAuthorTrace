@@ -71,8 +71,6 @@ python scripts/run_analysis.py
 ### 7. 启动后端 API 服务
 
 ```bash
-python scripts/start_server.py
-# 或直接运行
 uvicorn src.api.main:app --host 0.0.0.0 --port 8000
 ```
 

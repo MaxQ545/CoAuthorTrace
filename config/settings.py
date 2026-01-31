@@ -71,7 +71,8 @@ class CrawlerSettings(BaseSettings):
     )
 
     openalex_email: Optional[str] = None
-    rate_limit: float = 8.0
+    openalex_api_key: Optional[str] = None
+    rate_limit: float = 10.0
     batch_size: int = 200
     max_retries: int = 3
 

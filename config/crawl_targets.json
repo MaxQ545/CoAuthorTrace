@@ -1,0 +1,416 @@
+{
+  "institutions": [
+    {
+      "id": "I99065089",
+      "name": "清华大学",
+      "name_en": "Tsinghua University",
+      "priority": 0,
+      "category": "985_university",
+      "status": "completed",
+      "last_crawl": "2026-01-31T05:37:15.977652",
+      "works_count": 58081,
+      "concepts": [
+        "cs_ai"
+      ]
+    },
+    {
+      "id": "I20231570",
+      "name": "北京大学",
+      "name_en": "Peking University",
+      "priority": 0,
+      "category": "985_university",
+      "status": "completed",
+      "last_crawl": "2026-01-31T05:37:15.974182",
+      "works_count": 108,
+      "concepts": [
+        "cs_ai"
+      ]
+    },
+    {
+      "id": "I76130692",
+      "name": "浙江大学",
+      "name_en": "Zhejiang University",
+      "priority": 0,
+      "category": "985_university",
+      "status": "completed",
+      "last_crawl": "2026-01-31T05:37:15.977116",
+      "works_count": 29,
+      "concepts": [
+        "cs_ai"
+      ]
+    },
+    {
+      "id": "I183067930",
+      "name": "上海交通大学",
+      "name_en": "Shanghai Jiao Tong University",
+      "priority": 0,
+      "category": "985_university",
+      "status": "completed",
+      "last_crawl": "2026-01-31T05:37:15.969375",
+      "works_count": 1,
+      "concepts": [
+        "cs_ai"
+      ]
+    },
+    {
+      "id": "I126520041",
+      "name": "中国科学技术大学",
+      "name_en": "University of Science and Technology of China",
+      "priority": 0,
+      "category": "985_university",
+      "status": "completed",
+      "last_crawl": "2026-01-31T05:37:15.971734",
+      "works_count": 13,
+      "concepts": [
+        "cs_ai"
+      ]
+    },
+    {
+      "id": "I24943067",
+      "name": "复旦大学",
+      "name_en": "Fudan University",
+      "priority": 0,
+      "category": "985_university",
+      "status": "completed",
+      "last_crawl": "2026-01-31T05:37:15.976483",
+      "works_count": 17,
+      "concepts": [
+        "cs_ai"
+      ]
+    },
+    {
+      "id": "I881766915",
+      "name": "南京大学",
+      "name_en": "Nanjing University",
+      "priority": 0,
+      "category": "985_university",
+      "status": "completed",
+      "last_crawl": "2026-01-31T05:37:15.975242",
+      "works_count": 13,
+      "concepts": [
+        "cs_ai"
+      ]
+    },
+    {
+      "id": "I2800596701",
+      "name": "哈尔滨工业大学",
+      "name_en": "Harbin Institute of Technology",
+      "priority": 0,
+      "category": "985_university",
+      "status": "completed",
+      "last_crawl": "2026-01-31T05:37:15.975806",
+      "works_count": 0,
+      "concepts": [
+        "cs_ai"
+      ]
+    },
+    {
+      "id": "I32491436",
+      "name": "华中科技大学",
+      "name_en": "Huazhong University of Science and Technology",
+      "priority": 1,
+      "category": "985_university",
+      "status": "completed",
+      "last_crawl": "2026-01-31T05:37:15.981747",
+      "works_count": 0,
+      "concepts": [
+        "cs_ai"
+      ]
+    },
+    {
+      "id": "I21985064",
+      "name": "西安交通大学",
+      "name_en": "Xi'an Jiaotong University",
+      "priority": 1,
+      "category": "985_university",
+      "status": "completed",
+      "last_crawl": "2026-01-31T05:37:15.984755",
+      "works_count": 0,
+      "concepts": [
+        "cs_ai"
+      ]
+    },
+    {
+      "id": "I82880672",
+      "name": "北京航空航天大学",
+      "name_en": "Beihang University",
+      "priority": 1,
+      "category": "985_university",
+      "status": "completed",
+      "last_crawl": "2026-01-31T05:37:15.980915",
+      "works_count": 33594,
+      "concepts": [
+        "cs_ai"
+      ]
+    },
+    {
+      "id": "I4210163067",
+      "name": "电子科技大学",
+      "name_en": "University of Electronic Science and Technology of China",
+      "priority": 1,
+      "category": "985_university",
+      "status": "completed",
+      "last_crawl": "2026-01-31T05:37:15.984301",
+      "works_count": 7,
+      "concepts": [
+        "cs_ai"
+      ]
+    },
+    {
+      "id": "I184901955",
+      "name": "东南大学",
+      "name_en": "Southeast University",
+      "priority": 1,
+      "category": "985_university",
+      "status": "completed",
+      "last_crawl": "2026-01-31T05:37:15.978737",
+      "works_count": 0,
+      "concepts": [
+        "cs_ai"
+      ]
+    },
+    {
+      "id": "I106426430",
+      "name": "中山大学",
+      "name_en": "Sun Yat-sen University",
+      "priority": 1,
+      "category": "985_university",
+      "status": "completed",
+      "last_crawl": "2026-01-31T05:37:15.979252",
+      "works_count": 0,
+      "concepts": [
+        "cs_ai"
+      ]
+    },
+    {
+      "id": "I98391310",
+      "name": "同济大学",
+      "name_en": "Tongji University",
+      "priority": 1,
+      "category": "985_university",
+      "status": "completed",
+      "last_crawl": "2026-01-31T05:37:15.982368",
+      "works_count": 0,
+      "concepts": [
+        "cs_ai"
+      ]
+    },
+    {
+      "id": "I60027950",
+      "name": "武汉大学",
+      "name_en": "Wuhan University",
+      "priority": 1,
+      "category": "985_university",
+      "status": "completed",
+      "last_crawl": "2026-01-31T05:37:15.983767",
+      "works_count": 0,
+      "concepts": [
+        "cs_ai"
+      ]
+    },
+    {
+      "id": "I127718055",
+      "name": "北京理工大学",
+      "name_en": "Beijing Institute of Technology",
+      "priority": 1,
+      "category": "985_university",
+      "status": "completed",
+      "last_crawl": "2026-01-31T05:37:15.980295",
+      "works_count": 0,
+      "concepts": [
+        "cs_ai"
+      ]
+    },
+    {
+      "id": "I17145004",
+      "name": "西北工业大学",
+      "name_en": "Northwestern Polytechnical University",
+      "priority": 2,
+      "category": "985_university",
+      "status": "completed",
+      "last_crawl": "2026-01-31T05:37:15.986688",
+      "works_count": 29415,
+      "concepts": [
+        "cs_ai"
+      ]
+    },
+    {
+      "id": "I165502265",
+      "name": "天津大学",
+      "name_en": "Tianjin University",
+      "priority": 2,
+      "category": "985_university",
+      "status": "completed",
+      "last_crawl": "2026-01-31T05:37:15.985985",
+      "works_count": 0,
+      "concepts": [
+        "cs_ai"
+      ]
+    },
+    {
+      "id": "I103878954",
+      "name": "四川大学",
+      "name_en": "Sichuan University",
+      "priority": 2,
+      "category": "985_university",
+      "status": "completed",
+      "last_crawl": "2026-01-31T05:37:15.985343",
+      "works_count": 0,
+      "concepts": [
+        "cs_ai"
+      ]
+    },
+    {
+      "id": "I4210145476",
+      "name": "中国科学院计算技术研究所",
+      "name_en": "Institute of Computing Technology, Chinese Academy of Sciences",
+      "priority": 0,
+      "category": "research_institute",
+      "status": "completed",
+      "last_crawl": "2026-01-31T05:57:41.001230",
+      "works_count": 34,
+      "concepts": [
+        "cs_ai"
+      ]
+    },
+    {
+      "id": "I51096905",
+      "name": "中国科学院自动化研究所",
+      "name_en": "Institute of Automation, Chinese Academy of Sciences",
+      "priority": 0,
+      "category": "research_institute",
+      "status": "completed",
+      "last_crawl": "2026-01-31T05:37:15.973079",
+      "works_count": 0,
+      "concepts": [
+        "cs_ai"
+      ]
+    },
+    {
+      "id": "I4210154579",
+      "name": "中国科学院信息工程研究所",
+      "name_en": "Institute of Information Engineering, Chinese Academy of Sciences",
+      "priority": 0,
+      "category": "research_institute",
+      "status": "completed",
+      "last_crawl": "2026-01-31T05:37:15.972417",
+      "works_count": 3,
+      "concepts": [
+        "cs_ai"
+      ]
+    },
+    {
+      "id": "I4387154912",
+      "name": "上海人工智能实验室",
+      "name_en": "Shanghai AI Laboratory",
+      "priority": 0,
+      "category": "research_institute",
+      "status": "completed",
+      "last_crawl": "2026-01-31T05:37:15.970992",
+      "works_count": 0,
+      "concepts": [
+        "cs_ai"
+      ]
+    },
+    {
+      "id": "I4210136793",
+      "name": "鹏城实验室",
+      "name_en": "Peng Cheng Laboratory",
+      "priority": 0,
+      "category": "research_institute",
+      "status": "completed",
+      "last_crawl": "2026-01-31T05:37:15.978232",
+      "works_count": 65,
+      "concepts": [
+        "cs_ai"
+      ]
+    },
+    {
+      "id": "I4210155622",
+      "name": "北京智源人工智能研究院",
+      "name_en": "Beijing Academy of Artificial Intelligence",
+      "priority": 0,
+      "category": "research_institute",
+      "status": "completed",
+      "last_crawl": "2026-01-31T05:37:15.974656",
+      "works_count": 0,
+      "concepts": [
+        "cs_ai"
+      ]
+    },
+    {
+      "id": "I4210143319",
+      "name": "之江实验室",
+      "name_en": "Zhejiang Lab",
+      "priority": 1,
+      "category": "research_institute",
+      "status": "completed",
+      "last_crawl": "2026-01-31T05:37:15.979760",
+      "works_count": 0,
+      "concepts": [
+        "cs_ai"
+      ]
+    },
+    {
+      "id": "I185261750",
+      "name": "微软亚洲研究院",
+      "name_en": "Microsoft Research Asia",
+      "priority": 1,
+      "category": "research_institute",
+      "status": "completed",
+      "last_crawl": "2026-01-31T05:57:41.002387",
+      "works_count": 31338,
+      "concepts": [
+        "cs_ai"
+      ]
+    }
+  ],
+  "concept_presets": {
+    "cs_ai": [
+      "C41008148",
+      "C154945302",
+      "C119857082"
+    ],
+    "cs_ai_extended": [
+      "C41008148",
+      "C154945302",
+      "C119857082",
+      "C108827166",
+      "C204321447",
+      "C31972630",
+      "C2522767166",
+      "C90856448"
+    ],
+    "nlp": [
+      "C204321447"
+    ],
+    "cv": [
+      "C31972630"
+    ],
+    "deep_learning": [
+      "C108827166"
+    ],
+    "data_mining": [
+      "C2522767166"
+    ],
+    "robotics": [
+      "C90856448"
+    ]
+  },
+  "concept_definitions": {
+    "C41008148": "Computer Science",
+    "C154945302": "Artificial Intelligence",
+    "C119857082": "Machine Learning",
+    "C108827166": "Deep Learning",
+    "C204321447": "Natural Language Processing",
+    "C31972630": "Computer Vision",
+    "C2522767166": "Data Mining",
+    "C90856448": "Robotics"
+  },
+  "default_from_date": "2020-01-01",
+  "metadata": {
+    "version": "1.0",
+    "created_at": "2026-01-31",
+    "description": "Target institutions for China 985 universities and top AI research institutions crawl"
+  }
+}

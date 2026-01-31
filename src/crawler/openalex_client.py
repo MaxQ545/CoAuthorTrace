@@ -57,18 +57,21 @@ class OpenAlexClient:
     def __init__(
         self,
         email: Optional[str] = None,
-        rate_limit: float = 8.0,
+        api_key: Optional[str] = None,
+        rate_limit: float = 10.0,
         max_retries: int = 3,
     ):
         """
         Initialize OpenAlex client.
 
         Args:
-            email: Email for polite pool (faster rate limits)
+            email: Email for polite pool
+            api_key: OpenAlex API key for higher rate limits
             rate_limit: Requests per second
             max_retries: Maximum retry attempts for failed requests
         """
         self.email = email or settings.crawler.openalex_email
+        self.api_key = api_key or settings.crawler.openalex_api_key
         self.rate_limiter = RateLimiter(rate_limit)
         self.max_retries = max_retries
         self._client: Optional[httpx.AsyncClient] = None
@@ -110,8 +113,9 @@ class OpenAlexClient:
         url = f"{self.BASE_URL}{endpoint}"
 
         if params:
-            # Add email for polite pool
-            if self.email:
+            if self.api_key:
+                params["api_key"] = self.api_key
+            elif self.email:
                 params["mailto"] = self.email
             url = f"{url}?{urlencode(params, safe=',|:')}"
 
