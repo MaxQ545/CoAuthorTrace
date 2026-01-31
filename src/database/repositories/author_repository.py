@@ -442,18 +442,45 @@ class AuthorRepository:
             # Apply pagination
             return results[offset:offset + limit], len(results)
 
-        # Original logic without year filter
-        authors = (
-            base_query
-            .order_by(Author.works_count.desc())
-            .offset(offset)
-            .limit(limit)
-            .all()
+        # Calculate works count dynamically using SQL for better accuracy
+        # The Author.works_count field may not be populated correctly
+        works_subquery = (
+            self.session.query(
+                Authorship.author_id,
+                func.count(func.distinct(Authorship.work_id)).label('works_count')
+            )
+            .group_by(Authorship.author_id)
+            .subquery()
         )
 
-        # Calculate merged works count and cited_by_count for each author
+        # Query authors with their actual works count
+        query = (
+            self.session.query(Author, func.coalesce(works_subquery.c.works_count, 0))
+            .outerjoin(works_subquery, Author.id == works_subquery.c.author_id)
+            .filter(Author.is_canonical == True)
+        )
+
+        if institution_id:
+            query = query.filter(Author.last_known_institution_id == institution_id)
+        elif institution_name:
+            query = query.filter(
+                Author.last_known_institution_name.ilike(f"%{institution_name}%")
+            )
+
+        # Order by actual works count and apply pagination
+        query = (
+            query
+            .order_by(func.coalesce(works_subquery.c.works_count, 0).desc())
+            .offset(offset)
+            .limit(limit)
+        )
+
+        authors_with_counts = query.all()
+
+        # Calculate cited_by_count for each author
         results = []
-        for author in authors:
+        for author, works_count in authors_with_counts:
+            # Get merged works count (including aliases)
             merged_count = self.get_merged_works_count(author.id)
             cited_by_count = self._get_merged_cited_by_count_by_year(author.id)
             results.append((author, merged_count, cited_by_count))
