@@ -3,9 +3,11 @@ import { useParams, Link } from 'react-router-dom';
 import api from '../api/client';
 import AuthorCard from '../components/AuthorCard';
 import CoAuthoredPapersModal from '../components/CoAuthoredPapersModal';
+import { useTimeFilter } from '../contexts/TimeFilterContext';
 
 function AuthorPage() {
   const { authorId } = useParams();
+  const { timeRange } = useTimeFilter();
   const [author, setAuthor] = useState(null);
   const [collaborators, setCollaborators] = useState([]);
   const [metrics, setMetrics] = useState(null);
@@ -21,7 +23,7 @@ function AuthorPage() {
 
   useEffect(() => {
     loadAuthorData();
-  }, [authorId]);
+  }, [authorId, timeRange.fromYear, timeRange.toYear]);
 
   const loadAuthorData = async () => {
     setLoading(true);
@@ -30,7 +32,7 @@ function AuthorPage() {
     try {
       const [authorData, collabData] = await Promise.all([
         api.getAuthor(authorId),
-        api.getAuthorCollaborators(authorId, 30),
+        api.getAuthorCollaborators(authorId, 30, timeRange.fromYear, timeRange.toYear),
       ]);
 
       setAuthor(authorData);

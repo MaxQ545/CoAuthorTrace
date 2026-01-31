@@ -254,7 +254,9 @@ class CollaborationRepository:
         limit: int = 20,
         offset: int = 0,
         sort_by: str = "publication_date",
-        sort_order: str = "desc"
+        sort_order: str = "desc",
+        from_year: Optional[int] = None,
+        to_year: Optional[int] = None
     ) -> tuple[list[Work], int]:
         """
         获取两位作者共同合作的论文列表。
@@ -303,6 +305,12 @@ class CollaborationRepository:
             .filter(Work.id.in_(subq1))
             .filter(Work.id.in_(subq2))
         )
+
+        # 添加年份过滤
+        if from_year is not None:
+            base_query = base_query.filter(Work.publication_year >= from_year)
+        if to_year is not None:
+            base_query = base_query.filter(Work.publication_year <= to_year)
 
         # 计算总数
         total = base_query.count()

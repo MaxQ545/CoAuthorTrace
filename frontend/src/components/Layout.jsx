@@ -1,4 +1,5 @@
 import { Link, useLocation } from 'react-router-dom';
+import TimeRangeSelector from './TimeRangeSelector';
 
 function Layout({ children }) {
   const location = useLocation();
@@ -41,6 +42,9 @@ function Layout({ children }) {
           </div>
         </div>
       </header>
+
+      {/* Time Range Filter */}
+      <TimeRangeSelector />
 
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">

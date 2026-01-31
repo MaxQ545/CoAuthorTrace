@@ -1,9 +1,11 @@
 import { useState, useEffect } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import api from '../api/client';
+import { useTimeFilter } from '../contexts/TimeFilterContext';
 
 function RankingPage() {
   const [searchParams, setSearchParams] = useSearchParams();
+  const { timeRange } = useTimeFilter();
   const [institutions, setInstitutions] = useState([]);
   const [ranking, setRanking] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -21,7 +23,7 @@ function RankingPage() {
     } else {
       setRanking(null);
     }
-  }, [selectedInstitutionId]);
+  }, [selectedInstitutionId, timeRange.fromYear, timeRange.toYear]);
 
   const loadInstitutions = async () => {
     try {
@@ -39,7 +41,9 @@ function RankingPage() {
     setError(null);
 
     try {
-      const data = await api.getInstitutionRanking(institutionId, null, 100);
+      const data = await api.getInstitutionRanking(
+        institutionId, null, 100, 0, timeRange.fromYear, timeRange.toYear
+      );
       setRanking(data);
     } catch (err) {
       console.error('Failed to load ranking:', err);

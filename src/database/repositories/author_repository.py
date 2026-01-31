@@ -2,9 +2,9 @@
 from functools import lru_cache
 from typing import Optional
 from sqlalchemy.orm import Session
-from sqlalchemy import or_, func
+from sqlalchemy import or_, func, select
 
-from src.database.models import Author, Authorship, Collaboration, RelationshipScore
+from src.database.models import Author, Authorship, Collaboration, RelationshipScore, Work
 
 # Simple in-memory cache for search count (cleared on restart)
 _search_count_cache = {}
@@ -129,10 +129,25 @@ class AuthorRepository:
     def get_collaborators(
         self,
         author_id: str,
-        limit: int = 50
+        limit: int = 50,
+        from_year: Optional[int] = None,
+        to_year: Optional[int] = None
     ) -> list[tuple[Author, int]]:
-        """Get collaborators of an author with collaboration count."""
-        # Use JOIN to avoid N+1 queries
+        """Get collaborators of an author with collaboration count.
+
+        Args:
+            author_id: The author's OpenAlex ID
+            limit: Maximum results
+            from_year: Filter collaborations from this year (inclusive)
+            to_year: Filter collaborations up to this year (inclusive)
+        """
+        # If year filter is specified, we need to count collaborations through works
+        if from_year is not None or to_year is not None:
+            return self._get_collaborators_by_year_range(
+                author_id, limit, from_year, to_year
+            )
+
+        # Original logic without year filter - use pre-computed Collaboration table
         # Query where author is author_1
         q1 = (
             self.session.query(Author, Collaboration.collaboration_count)
@@ -151,6 +166,63 @@ class AuthorRepository:
         results = (
             q1.union(q2)
             .order_by(Collaboration.collaboration_count.desc())
+            .limit(limit)
+            .all()
+        )
+
+        return [(author, count) for author, count in results]
+
+    def _get_collaborators_by_year_range(
+        self,
+        author_id: str,
+        limit: int = 50,
+        from_year: Optional[int] = None,
+        to_year: Optional[int] = None
+    ) -> list[tuple[Author, int]]:
+        """Get collaborators with collaboration count filtered by year range.
+
+        This queries through Authorship and Work tables to dynamically count
+        collaborations within the specified time range.
+        """
+        import json
+
+        # Get all IDs for the author (including aliases)
+        author = self.get_by_id(author_id)
+        if not author:
+            return []
+
+        author_ids = [author_id]
+        if author.alias_ids:
+            try:
+                author_ids.extend(json.loads(author.alias_ids))
+            except:
+                pass
+
+        # Subquery: find all work_ids the author participated in (within year range)
+        # Using select() construct for proper subquery handling in SQLAlchemy 1.4+
+        work_ids_stmt = (
+            select(Authorship.work_id)
+            .join(Work, Authorship.work_id == Work.id)
+            .where(Authorship.author_id.in_(author_ids))
+        )
+
+        if from_year is not None:
+            work_ids_stmt = work_ids_stmt.where(Work.publication_year >= from_year)
+        if to_year is not None:
+            work_ids_stmt = work_ids_stmt.where(Work.publication_year <= to_year)
+
+        # Query: find all other authors who co-authored these works, with count
+        results = (
+            self.session.query(
+                Author,
+                func.count(func.distinct(Authorship.work_id)).label('collab_count')
+            )
+            .join(Authorship, Author.id == Authorship.author_id)
+            .filter(Authorship.work_id.in_(work_ids_stmt))
+            .filter(~Authorship.author_id.in_(author_ids))  # Exclude the author themselves
+            .filter(Author.is_canonical == True)  # Only canonical authors
+            .group_by(Author.id)
+            .order_by(func.count(func.distinct(Authorship.work_id)).desc())
             .limit(limit)
             .all()
         )
@@ -313,7 +385,9 @@ class AuthorRepository:
         institution_id: str = None,
         institution_name: str = None,
         limit: int = 50,
-        offset: int = 0
+        offset: int = 0,
+        from_year: Optional[int] = None,
+        to_year: Optional[int] = None
     ) -> tuple[list[tuple], int]:
         """Get top authors by works count for an institution.
 
@@ -322,9 +396,11 @@ class AuthorRepository:
             institution_name: Institution name (partial match)
             limit: Maximum results
             offset: Result offset
+            from_year: Filter works from this year (inclusive)
+            to_year: Filter works up to this year (inclusive)
 
         Returns:
-            Tuple of (list of (author, merged_works_count), total_count)
+            Tuple of (list of (author, works_count), total_count)
         """
         import json
 
@@ -343,7 +419,27 @@ class AuthorRepository:
         # Get total count
         total = base_query.count()
 
-        # Get authors ordered by works_count (we'll recalculate merged counts)
+        # If year filter is specified, we need to count works dynamically
+        if from_year is not None or to_year is not None:
+            # Get all authors for this institution
+            authors = base_query.all()
+
+            # Calculate works count for each author within year range
+            results = []
+            for author in authors:
+                works_count = self._get_merged_works_count_by_year(
+                    author.id, from_year, to_year
+                )
+                if works_count > 0:  # Only include authors with works in range
+                    results.append((author, works_count))
+
+            # Sort by works count
+            results.sort(key=lambda x: x[1], reverse=True)
+
+            # Apply pagination
+            return results[offset:offset + limit], len(results)
+
+        # Original logic without year filter
         authors = (
             base_query
             .order_by(Author.works_count.desc())
@@ -362,6 +458,41 @@ class AuthorRepository:
         results.sort(key=lambda x: x[1], reverse=True)
 
         return results, total
+
+    def _get_merged_works_count_by_year(
+        self,
+        author_id: str,
+        from_year: Optional[int] = None,
+        to_year: Optional[int] = None
+    ) -> int:
+        """Get total works count for an author within a year range."""
+        import json
+
+        author = self.get_by_id(author_id)
+        if not author:
+            return 0
+
+        # Get all IDs (main + aliases)
+        all_ids = [author_id]
+        if author.alias_ids:
+            try:
+                all_ids.extend(json.loads(author.alias_ids))
+            except:
+                pass
+
+        # Build query with year filter
+        query = (
+            self.session.query(func.count(func.distinct(Authorship.work_id)))
+            .join(Work, Authorship.work_id == Work.id)
+            .filter(Authorship.author_id.in_(all_ids))
+        )
+
+        if from_year is not None:
+            query = query.filter(Work.publication_year >= from_year)
+        if to_year is not None:
+            query = query.filter(Work.publication_year <= to_year)
+
+        return query.scalar() or 0
 
     def get_institutions(self) -> list[dict]:
         """Get list of all institutions with author counts."""

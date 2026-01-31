@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import api from '../api/client';
+import { useTimeFilter } from '../contexts/TimeFilterContext';
 
 function CoAuthoredPapersModal({
   isOpen,
@@ -9,6 +10,7 @@ function CoAuthoredPapersModal({
   collaboratorId,
   collaboratorName
 }) {
+  const { timeRange } = useTimeFilter();
   const [papers, setPapers] = useState([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -24,7 +26,7 @@ function CoAuthoredPapersModal({
     if (isOpen && authorId && collaboratorId) {
       loadPapers();
     }
-  }, [isOpen, authorId, collaboratorId, offset, sortBy, sortOrder]);
+  }, [isOpen, authorId, collaboratorId, offset, sortBy, sortOrder, timeRange.fromYear, timeRange.toYear]);
 
   // Reset when modal opens with new collaborator
   useEffect(() => {
@@ -44,7 +46,9 @@ function CoAuthoredPapersModal({
         limit,
         offset,
         sortBy,
-        sortOrder
+        sortOrder,
+        timeRange.fromYear,
+        timeRange.toYear
       );
       setPapers(data.papers);
       setTotal(data.total);

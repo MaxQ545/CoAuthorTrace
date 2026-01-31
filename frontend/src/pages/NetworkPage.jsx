@@ -3,10 +3,12 @@ import { useParams, useNavigate } from 'react-router-dom';
 import api from '../api/client';
 import NetworkGraph from '../components/NetworkGraph';
 import SearchBox from '../components/SearchBox';
+import { useTimeFilter } from '../contexts/TimeFilterContext';
 
 function NetworkPage() {
   const { authorId } = useParams();
   const navigate = useNavigate();
+  const { timeRange } = useTimeFilter();
   const [author, setAuthor] = useState(null);
   const [collaborators, setCollaborators] = useState([]);
   const [nodes, setNodes] = useState([]);
@@ -19,14 +21,14 @@ function NetworkPage() {
     if (authorId) {
       loadAuthorNetwork(authorId);
     }
-  }, [authorId]);
+  }, [authorId, timeRange.fromYear, timeRange.toYear]);
 
   const loadAuthorNetwork = async (id) => {
     setLoading(true);
     try {
       const [authorData, collabData] = await Promise.all([
         api.getAuthor(id),
-        api.getAuthorCollaborators(id, 50),
+        api.getAuthorCollaborators(id, 50, timeRange.fromYear, timeRange.toYear),
       ]);
 
       setAuthor(authorData);

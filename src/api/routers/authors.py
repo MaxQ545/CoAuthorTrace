@@ -247,6 +247,8 @@ async def get_institution_ranking(
     institution_name: Optional[str] = Query(None, description="Institution name (partial match)"),
     limit: int = Query(50, ge=1, le=200, description="Maximum results"),
     offset: int = Query(0, ge=0, description="Result offset"),
+    from_year: Optional[int] = Query(None, ge=1900, le=2100, description="起始年份（包含）"),
+    to_year: Optional[int] = Query(None, ge=1900, le=2100, description="结束年份（包含）"),
     db: Session = Depends(get_db),
 ):
     """
@@ -254,6 +256,8 @@ async def get_institution_ranking(
 
     Query by either institution_id (exact match) or institution_name (partial match).
     Returns authors sorted by works count (descending).
+
+    Optionally filter by publication year range using from_year and to_year.
     """
     if not institution_id and not institution_name:
         raise HTTPException(
@@ -269,6 +273,8 @@ async def get_institution_ranking(
             institution_name=institution_name,
             limit=limit,
             offset=offset,
+            from_year=from_year,
+            to_year=to_year,
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -461,6 +467,8 @@ async def get_network_metrics(
 async def get_collaborators(
     author_id: str,
     limit: int = Query(50, ge=1, le=200, description="Maximum results"),
+    from_year: Optional[int] = Query(None, ge=1900, le=2100, description="起始年份（包含）"),
+    to_year: Optional[int] = Query(None, ge=1900, le=2100, description="结束年份（包含）"),
     db: Session = Depends(get_db),
 ):
     """
@@ -468,6 +476,8 @@ async def get_collaborators(
 
     Returns authors who have co-authored papers with the specified author,
     sorted by collaboration count.
+
+    Optionally filter by publication year range using from_year and to_year.
     """
     repo = AuthorRepository(db)
     author = repo.get_by_id(author_id)
@@ -475,7 +485,9 @@ async def get_collaborators(
     if not author:
         raise HTTPException(status_code=404, detail="Author not found")
 
-    collaborators = repo.get_collaborators(author_id, limit=limit)
+    collaborators = repo.get_collaborators(
+        author_id, limit=limit, from_year=from_year, to_year=to_year
+    )
 
     return {
         "author_id": author_id,
@@ -507,6 +519,8 @@ async def get_co_authored_papers(
         description="排序方向",
         pattern="^(asc|desc)$"
     ),
+    from_year: Optional[int] = Query(None, ge=1900, le=2100, description="起始年份（包含）"),
+    to_year: Optional[int] = Query(None, ge=1900, le=2100, description="结束年份（包含）"),
     db: Session = Depends(get_db),
 ):
     """
@@ -514,6 +528,8 @@ async def get_co_authored_papers(
 
     返回指定作者与合作者共同发表的论文，支持分页和排序。
     会自动处理合并作者 (alias_ids) 的情况。
+
+    可通过 from_year 和 to_year 参数过滤指定年份范围内的论文。
     """
     repo = AuthorRepository(db)
     collab_repo = CollaborationRepository(db)
@@ -535,6 +551,8 @@ async def get_co_authored_papers(
         offset=offset,
         sort_by=sort_by,
         sort_order=sort_order,
+        from_year=from_year,
+        to_year=to_year,
     )
 
     # 构建响应

@@ -42,8 +42,10 @@ class ApiClient {
     return this.request(`/authors/${authorId}`);
   }
 
-  async getAuthorCollaborators(authorId, limit = 50) {
+  async getAuthorCollaborators(authorId, limit = 50, fromYear = null, toYear = null) {
     const params = new URLSearchParams({ limit });
+    if (fromYear) params.append('from_year', fromYear);
+    if (toYear) params.append('to_year', toYear);
     return this.request(`/authors/${authorId}/collaborators?${params}`);
   }
 
@@ -61,20 +63,24 @@ class ApiClient {
     return this.request('/authors/institutions');
   }
 
-  async getInstitutionRanking(institutionId = null, institutionName = null, limit = 50, offset = 0) {
+  async getInstitutionRanking(institutionId = null, institutionName = null, limit = 50, offset = 0, fromYear = null, toYear = null) {
     const params = new URLSearchParams({ limit, offset });
     if (institutionId) params.append('institution_id', institutionId);
     if (institutionName) params.append('institution_name', institutionName);
+    if (fromYear) params.append('from_year', fromYear);
+    if (toYear) params.append('to_year', toYear);
     return this.request(`/authors/ranking/by-institution?${params}`);
   }
 
-  async getCoAuthoredPapers(authorId, collaboratorId, limit = 20, offset = 0, sortBy = 'publication_date', sortOrder = 'desc') {
+  async getCoAuthoredPapers(authorId, collaboratorId, limit = 20, offset = 0, sortBy = 'publication_date', sortOrder = 'desc', fromYear = null, toYear = null) {
     const params = new URLSearchParams({
       limit,
       offset,
       sort_by: sortBy,
       sort_order: sortOrder
     });
+    if (fromYear) params.append('from_year', fromYear);
+    if (toYear) params.append('to_year', toYear);
     return this.request(`/authors/${authorId}/co-authored-papers/${collaboratorId}?${params}`);
   }
 }
