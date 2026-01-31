@@ -145,6 +145,30 @@ class NetworkMetricsResponse(BaseModel):
     metrics: NetworkMetrics
 
 
+class CoAuthoredPaper(BaseModel):
+    """Co-authored paper information."""
+    id: str
+    title: str
+    doi: Optional[str] = None
+    publication_date: Optional[str] = None
+    publication_year: Optional[int] = None
+    source_name: Optional[str] = None
+    cited_by_count: int = 0
+    is_open_access: bool = False
+
+
+class CoAuthoredPapersResponse(BaseModel):
+    """Co-authored papers response."""
+    author_id: str
+    author_name: str
+    collaborator_id: str
+    collaborator_name: str
+    papers: list[CoAuthoredPaper]
+    total: int
+    limit: int
+    offset: int
+
+
 # Dependency for database session
 def get_db():
     """Get database session."""
@@ -465,3 +489,76 @@ async def get_collaborators(
             for collab, count in collaborators
         ],
     }
+
+
+@router.get("/{author_id}/co-authored-papers/{collaborator_id}", response_model=CoAuthoredPapersResponse)
+async def get_co_authored_papers(
+    author_id: str,
+    collaborator_id: str,
+    limit: int = Query(20, ge=1, le=100, description="每页数量"),
+    offset: int = Query(0, ge=0, description="分页偏移"),
+    sort_by: str = Query(
+        "publication_date",
+        description="排序字段",
+        pattern="^(publication_date|cited_by_count|title)$"
+    ),
+    sort_order: str = Query(
+        "desc",
+        description="排序方向",
+        pattern="^(asc|desc)$"
+    ),
+    db: Session = Depends(get_db),
+):
+    """
+    获取两位作者共同合作的论文列表。
+
+    返回指定作者与合作者共同发表的论文，支持分页和排序。
+    会自动处理合并作者 (alias_ids) 的情况。
+    """
+    repo = AuthorRepository(db)
+    collab_repo = CollaborationRepository(db)
+
+    # 验证两位作者都存在
+    author = repo.get_by_id(author_id)
+    if not author:
+        raise HTTPException(status_code=404, detail="Author not found")
+
+    collaborator = repo.get_by_id(collaborator_id)
+    if not collaborator:
+        raise HTTPException(status_code=404, detail="Collaborator not found")
+
+    # 获取共同合作的论文
+    works, total = collab_repo.get_co_authored_works(
+        author_id_1=author_id,
+        author_id_2=collaborator_id,
+        limit=limit,
+        offset=offset,
+        sort_by=sort_by,
+        sort_order=sort_order,
+    )
+
+    # 构建响应
+    papers = [
+        CoAuthoredPaper(
+            id=work.id,
+            title=work.title,
+            doi=work.doi,
+            publication_date=work.publication_date.strftime("%Y-%m-%d") if work.publication_date else None,
+            publication_year=work.publication_year,
+            source_name=work.source_name,
+            cited_by_count=work.cited_by_count or 0,
+            is_open_access=work.is_open_access or False,
+        )
+        for work in works
+    ]
+
+    return CoAuthoredPapersResponse(
+        author_id=author_id,
+        author_name=author.display_name,
+        collaborator_id=collaborator_id,
+        collaborator_name=collaborator.display_name,
+        papers=papers,
+        total=total,
+        limit=limit,
+        offset=offset,
+    )

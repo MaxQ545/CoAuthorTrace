@@ -67,6 +67,16 @@ class ApiClient {
     if (institutionName) params.append('institution_name', institutionName);
     return this.request(`/authors/ranking/by-institution?${params}`);
   }
+
+  async getCoAuthoredPapers(authorId, collaboratorId, limit = 20, offset = 0, sortBy = 'publication_date', sortOrder = 'desc') {
+    const params = new URLSearchParams({
+      limit,
+      offset,
+      sort_by: sortBy,
+      sort_order: sortOrder
+    });
+    return this.request(`/authors/${authorId}/co-authored-papers/${collaboratorId}?${params}`);
+  }
 }
 
 export const api = new ApiClient();

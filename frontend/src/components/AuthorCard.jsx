@@ -1,7 +1,15 @@
 import { Link } from 'react-router-dom';
 import { useState } from 'react';
 
-function AuthorCard({ author, showCollabCount = false, collabCount = 0, rank = null }) {
+function AuthorCard({
+  author,
+  showCollabCount = false,
+  collabCount = 0,
+  rank = null,
+  showViewPapersButton = false,
+  mainAuthorId = null,
+  onViewPapers = null
+}) {
   const [showAllIds, setShowAllIds] = useState(false);
   const hasMultipleIds = author.all_ids && author.all_ids.length > 1;
 
@@ -110,7 +118,7 @@ function AuthorCard({ author, showCollabCount = false, collabCount = 0, rank = n
         </div>
       </div>
 
-      <div className="mt-3 flex space-x-2">
+      <div className="mt-3 flex flex-wrap gap-2">
         <Link
           to={`/author/${author.id}`}
           className="text-xs px-3 py-1 bg-gray-100 text-gray-700 rounded-full hover:bg-gray-200"
@@ -123,6 +131,14 @@ function AuthorCard({ author, showCollabCount = false, collabCount = 0, rank = n
         >
           合作网络
         </Link>
+        {showViewPapersButton && mainAuthorId && onViewPapers && (
+          <button
+            onClick={() => onViewPapers(author.id, author.display_name)}
+            className="text-xs px-3 py-1 bg-green-100 text-green-700 rounded-full hover:bg-green-200"
+          >
+            查看 {collabCount} 篇合作论文
+          </button>
+        )}
       </div>
     </div>
   );

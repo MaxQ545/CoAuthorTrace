@@ -246,3 +246,75 @@ class CollaborationRepository:
             self.save_relationship_score(**score_data)
             count += 1
         return count
+
+    def get_co_authored_works(
+        self,
+        author_id_1: str,
+        author_id_2: str,
+        limit: int = 20,
+        offset: int = 0,
+        sort_by: str = "publication_date",
+        sort_order: str = "desc"
+    ) -> tuple[list[Work], int]:
+        """
+        获取两位作者共同合作的论文列表。
+
+        支持处理合并作者 (alias_ids) 的情况：
+        - 如果任一作者是 canonical 记录，会同时查询其所有 alias_ids
+        """
+        import json
+
+        # 获取两位作者的所有相关 ID (包括 alias_ids)
+        def get_all_author_ids(author_id: str) -> list[str]:
+            """获取作者及其所有别名 ID"""
+            author = self.session.query(Author).filter(Author.id == author_id).first()
+            if not author:
+                return [author_id]
+
+            ids = [author_id]
+            if author.alias_ids:
+                try:
+                    alias_list = json.loads(author.alias_ids)
+                    ids.extend(alias_list)
+                except:
+                    pass
+            return ids
+
+        author_ids_1 = get_all_author_ids(author_id_1)
+        author_ids_2 = get_all_author_ids(author_id_2)
+
+        # 子查询：找到作者1参与的所有 work_id
+        subq1 = (
+            self.session.query(Authorship.work_id)
+            .filter(Authorship.author_id.in_(author_ids_1))
+            .subquery()
+        )
+
+        # 子查询：找到作者2参与的所有 work_id
+        subq2 = (
+            self.session.query(Authorship.work_id)
+            .filter(Authorship.author_id.in_(author_ids_2))
+            .subquery()
+        )
+
+        # 查询两者都参与的论文
+        base_query = (
+            self.session.query(Work)
+            .filter(Work.id.in_(subq1))
+            .filter(Work.id.in_(subq2))
+        )
+
+        # 计算总数
+        total = base_query.count()
+
+        # 排序
+        sort_column = getattr(Work, sort_by, Work.publication_date)
+        if sort_order == "desc":
+            base_query = base_query.order_by(sort_column.desc().nulls_last())
+        else:
+            base_query = base_query.order_by(sort_column.asc().nulls_last())
+
+        # 分页
+        works = base_query.offset(offset).limit(limit).all()
+
+        return works, total

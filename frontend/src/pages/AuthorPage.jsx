@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import api from '../api/client';
 import AuthorCard from '../components/AuthorCard';
+import CoAuthoredPapersModal from '../components/CoAuthoredPapersModal';
 
 function AuthorPage() {
   const { authorId } = useParams();
@@ -10,6 +11,13 @@ function AuthorPage() {
   const [metrics, setMetrics] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+
+  // Modal state for co-authored papers
+  const [modalOpen, setModalOpen] = useState(false);
+  const [selectedCollaborator, setSelectedCollaborator] = useState({
+    id: null,
+    name: null
+  });
 
   useEffect(() => {
     loadAuthorData();
@@ -41,6 +49,16 @@ function AuthorPage() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleViewPapers = (collaboratorId, collaboratorName) => {
+    setSelectedCollaborator({ id: collaboratorId, name: collaboratorName });
+    setModalOpen(true);
+  };
+
+  const handleCloseModal = () => {
+    setModalOpen(false);
+    setSelectedCollaborator({ id: null, name: null });
   };
 
   if (loading) {
@@ -263,6 +281,9 @@ function AuthorPage() {
                 showCollabCount={true}
                 collabCount={collab.collaboration_count}
                 rank={index + 1}
+                showViewPapersButton={true}
+                mainAuthorId={authorId}
+                onViewPapers={handleViewPapers}
               />
             ))}
           </div>
@@ -270,6 +291,16 @@ function AuthorPage() {
           <p className="text-gray-500 text-center py-8">暂无合作者数据</p>
         )}
       </div>
+
+      {/* Co-authored papers modal */}
+      <CoAuthoredPapersModal
+        isOpen={modalOpen}
+        onClose={handleCloseModal}
+        authorId={authorId}
+        authorName={author?.display_name}
+        collaboratorId={selectedCollaborator.id}
+        collaboratorName={selectedCollaborator.name}
+      />
     </div>
   );
 }
