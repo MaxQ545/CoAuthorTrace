@@ -442,17 +442,25 @@ class AuthorRepository:
         """
         import json
 
-        # Build base query for canonical authors only
-        base_query = self.session.query(Author).filter(Author.is_canonical == True)
-
-        if institution_id:
-            base_query = base_query.filter(Author.last_known_institution_id == institution_id)
-        elif institution_name:
-            base_query = base_query.filter(
-                Author.last_known_institution_name.ilike(f"%{institution_name}%")
+        if institution_name:
+            return self._get_top_authors_by_affiliation(
+                institution_name=institution_name,
+                limit=limit,
+                offset=offset,
+                from_year=from_year,
+                to_year=to_year,
             )
-        else:
+
+        # Fallback to last known institution if no name is available
+        if not institution_id:
             raise ValueError("Either institution_id or institution_name must be provided")
+
+        # Build base query for canonical authors only
+        base_query = (
+            self.session.query(Author)
+            .filter(Author.is_canonical == True)
+            .filter(Author.last_known_institution_id == institution_id)
+        )
 
         # Get total count
         total = base_query.count()
@@ -525,6 +533,88 @@ class AuthorRepository:
 
         # Re-sort by merged count (in case merging changes the order)
         results.sort(key=lambda x: x[1], reverse=True)
+
+        return results, total
+
+    def _get_top_authors_by_affiliation(
+        self,
+        institution_name: str,
+        limit: int = 50,
+        offset: int = 0,
+        from_year: Optional[int] = None,
+        to_year: Optional[int] = None,
+    ) -> tuple[list[tuple], int]:
+        """Get top authors by works count within a specific affiliation name."""
+        from collections import defaultdict
+        import json
+
+        query = self.session.query(
+            Authorship.author_id,
+            func.count(func.distinct(Authorship.work_id)).label("works_count"),
+        ).filter(
+            Authorship.raw_affiliation.isnot(None),
+            Authorship.raw_affiliation.ilike(f"%{institution_name}%"),
+        )
+
+        if from_year is not None or to_year is not None:
+            query = query.join(Work, Authorship.work_id == Work.id)
+            if from_year is not None:
+                query = query.filter(Work.publication_year >= from_year)
+            if to_year is not None:
+                query = query.filter(Work.publication_year <= to_year)
+
+        query = query.group_by(Authorship.author_id)
+        rows = query.all()
+
+        if not rows:
+            return [], 0
+
+        # Build alias -> canonical map
+        alias_to_canonical = {}
+        canonical_rows = (
+            self.session.query(Author.id, Author.alias_ids)
+            .filter(Author.is_canonical == True)
+            .filter(Author.alias_ids.isnot(None))
+            .all()
+        )
+        for canonical_id, alias_ids in canonical_rows:
+            try:
+                aliases = json.loads(alias_ids)
+            except Exception:
+                aliases = []
+            for alias in aliases:
+                alias_to_canonical[alias] = canonical_id
+
+        # Aggregate counts by canonical author
+        counts = defaultdict(int)
+        for author_id, works_count in rows:
+            canonical_id = alias_to_canonical.get(author_id, author_id)
+            counts[canonical_id] += works_count
+
+        total = len(counts)
+        if total == 0:
+            return [], 0
+
+        # Fetch author records
+        author_ids = list(counts.keys())
+        authors = (
+            self.session.query(Author)
+            .filter(Author.id.in_(author_ids))
+            .all()
+        )
+        author_map = {author.id: author for author in authors}
+
+        # Sort and paginate
+        sorted_ids = sorted(counts.keys(), key=lambda aid: counts[aid], reverse=True)
+        paged_ids = sorted_ids[offset:offset + limit]
+
+        results = []
+        for author_id in paged_ids:
+            author = author_map.get(author_id)
+            if not author:
+                continue
+            cited_by_count = self._get_merged_cited_by_count_by_year(author.id)
+            results.append((author, counts[author_id], cited_by_count))
 
         return results, total
 

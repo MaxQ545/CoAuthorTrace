@@ -2,6 +2,8 @@
 Author-related API endpoints.
 """
 import logging
+import json
+from functools import lru_cache
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -18,6 +20,26 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
+@lru_cache()
+def _load_institution_catalog() -> dict:
+    """Load institution id -> name mapping from crawl_targets.json."""
+    path = settings.project_root / "config/crawl_targets.json"
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+    except Exception as exc:
+        logger.warning(f"Failed to load institution catalog from {path}: {exc}")
+        return {}
+
+    mapping = {}
+    for inst in data.get("institutions", []):
+        inst_id = inst.get("id")
+        if not inst_id:
+            continue
+        name = inst.get("name_en") or inst.get("name")
+        if name:
+            mapping[inst_id] = name
+    return mapping
 
 # Pydantic models for API responses
 
@@ -288,6 +310,9 @@ async def get_institution_ranking(
 
     repo = AuthorRepository(db)
 
+    if institution_id and not institution_name:
+        institution_name = _load_institution_catalog().get(institution_id)
+
     try:
         results, total = repo.get_top_authors_by_institution(
             institution_id=institution_id,
@@ -303,8 +328,8 @@ async def get_institution_ranking(
     if not results:
         raise HTTPException(status_code=404, detail="No authors found for this institution")
 
-    # Get institution name from first result
-    inst_name = results[0][0].last_known_institution_name if results else institution_name
+    # Prefer requested institution name when available
+    inst_name = institution_name or (results[0][0].last_known_institution_name if results else None)
 
     authors = [
         RankedAuthor(
