@@ -517,7 +517,7 @@ class RelationshipScorer:
                 pagerank = nx.pagerank(G, weight="weight", max_iter=100)
                 metrics["pagerank"] = pagerank.get(author_id, 0)
             except Exception as e:
-                logger.debug(f"PageRank failed: {e}")
+                logger.warning(f"PageRank failed for {author_id}: {e}")
 
             # Betweenness centrality (use sampling for large graphs)
             try:

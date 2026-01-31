@@ -216,7 +216,7 @@ function AuthorPage() {
             以下指标在同一机构内的合作网络中计算，用于衡量作者在机构内的学术影响力和合作地位
           </p>
           <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-            {metrics.degree_centrality !== undefined && (
+            {metrics.degree_centrality != null && (
               <div className="text-center">
                 <div className="text-xl font-bold text-gray-900">
                   {(metrics.degree_centrality * 100).toFixed(2)}%
@@ -224,7 +224,7 @@ function AuthorPage() {
                 <div className="text-sm text-gray-500">度中心性</div>
               </div>
             )}
-            {metrics.pagerank !== undefined && (
+            {metrics.pagerank != null && (
               <div className="text-center">
                 <div className="text-xl font-bold text-gray-900">
                   {(metrics.pagerank * 1000).toFixed(3)}
@@ -232,7 +232,7 @@ function AuthorPage() {
                 <div className="text-sm text-gray-500">PageRank (×1000)</div>
               </div>
             )}
-            {metrics.clustering_coefficient !== undefined && (
+            {metrics.clustering_coefficient != null && (
               <div className="text-center">
                 <div className="text-xl font-bold text-gray-900">
                   {(metrics.clustering_coefficient * 100).toFixed(1)}%
@@ -240,7 +240,7 @@ function AuthorPage() {
                 <div className="text-sm text-gray-500">聚类系数</div>
               </div>
             )}
-            {metrics.betweenness_centrality !== undefined && (
+            {metrics.betweenness_centrality != null && (
               <div className="text-center">
                 <div className="text-xl font-bold text-gray-900">
                   {(metrics.betweenness_centrality * 100).toFixed(3)}%
@@ -248,7 +248,7 @@ function AuthorPage() {
                 <div className="text-sm text-gray-500">中介中心性</div>
               </div>
             )}
-            {metrics.closeness_centrality !== undefined && (
+            {metrics.closeness_centrality != null && (
               <div className="text-center">
                 <div className="text-xl font-bold text-gray-900">
                   {(metrics.closeness_centrality * 100).toFixed(2)}%
@@ -256,7 +256,7 @@ function AuthorPage() {
                 <div className="text-sm text-gray-500">接近中心性</div>
               </div>
             )}
-            {metrics.eigenvector_centrality !== undefined && (
+            {metrics.eigenvector_centrality != null && (
               <div className="text-center">
                 <div className="text-xl font-bold text-gray-900">
                   {(metrics.eigenvector_centrality * 100).toFixed(3)}%
