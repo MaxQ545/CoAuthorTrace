@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom';
 import { useState } from 'react';
+import ResearchFieldsBadges from './ResearchFieldsBadges';
 
 function AuthorCard({
   author,
@@ -41,6 +42,13 @@ function AuthorCard({
             <p className="text-sm text-gray-600 mt-1">
               🏛️ {displayInstitution}
             </p>
+          )}
+
+          {/* Research Fields */}
+          {author.research_fields && author.research_fields.length > 0 && (
+            <div className="mt-2">
+              <ResearchFieldsBadges fields={author.research_fields} maxDisplay={3} />
+            </div>
           )}
 
           {/* ID and ORCID info */}

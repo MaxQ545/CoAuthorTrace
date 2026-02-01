@@ -52,6 +52,10 @@ class Author(Base):
     is_canonical = Column(Boolean, default=True)  # True if this is the primary record
     alias_ids = Column(Text, nullable=True)  # JSON array of merged author IDs
 
+    # Research fields (computed from works' concepts)
+    research_fields = Column(Text, nullable=True)  # JSON: [{"id", "name", "score", "count"}]
+    research_fields_updated_at = Column(DateTime, nullable=True)
+
     # Relationships
     authorships = relationship("Authorship", back_populates="author")
 
@@ -78,6 +82,7 @@ class Work(Base):
     source_id = Column(String(50), nullable=True)  # Journal/conference ID
     source_name = Column(String(500), nullable=True)
     is_open_access = Column(Boolean, default=False)
+    concepts = Column(Text, nullable=True)  # JSON: [{"id", "display_name", "level", "score"}]
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

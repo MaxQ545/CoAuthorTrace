@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import api from '../api/client';
 import { useTimeFilter } from '../contexts/TimeFilterContext';
+import ResearchFieldsBadges from '../components/ResearchFieldsBadges';
 
 function RankingPage() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -136,6 +137,7 @@ function RankingPage() {
                       <tr className="border-b border-gray-200">
                         <th className="text-left py-3 px-2 text-sm font-semibold text-gray-600 w-16">Rank</th>
                         <th className="text-left py-3 px-2 text-sm font-semibold text-gray-600">Author</th>
+                        <th className="text-left py-3 px-2 text-sm font-semibold text-gray-600">Research Fields</th>
                         <th className="text-right py-3 px-2 text-sm font-semibold text-gray-600 w-24">Papers</th>
                         <th className="text-right py-3 px-2 text-sm font-semibold text-gray-600 w-24">Citations</th>
                         <th className="text-center py-3 px-2 text-sm font-semibold text-gray-600 w-20">ORCID</th>
@@ -165,6 +167,9 @@ function RankingPage() {
                             >
                               {author.display_name}
                             </Link>
+                          </td>
+                          <td className="py-3 px-2">
+                            <ResearchFieldsBadges fields={author.research_fields} maxDisplay={2} />
                           </td>
                           <td className="py-3 px-2 text-right font-mono text-sm">
                             {author.works_count}

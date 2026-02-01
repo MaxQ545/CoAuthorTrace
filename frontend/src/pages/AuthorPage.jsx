@@ -3,6 +3,7 @@ import { useParams, Link } from 'react-router-dom';
 import api from '../api/client';
 import AuthorCard from '../components/AuthorCard';
 import CoAuthoredPapersModal from '../components/CoAuthoredPapersModal';
+import ResearchFieldsBadges from '../components/ResearchFieldsBadges';
 import { useTimeFilter } from '../contexts/TimeFilterContext';
 
 function AuthorPage() {
@@ -120,6 +121,12 @@ function AuthorPage() {
                     </span>
                   ))}
                 </div>
+              </div>
+            )}
+            {author?.research_fields && author.research_fields.length > 0 && (
+              <div className="mt-3">
+                <div className="text-xs text-gray-500 mb-2">研究领域</div>
+                <ResearchFieldsBadges fields={author.research_fields} maxDisplay={5} showCount={true} />
               </div>
             )}
           </div>

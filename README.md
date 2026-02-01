@@ -6,6 +6,7 @@
 
 - **数据爬取**: 从 OpenAlex API 增量爬取论文和作者数据
 - **作者去重**: 自动合并同姓名、同机构的作者记录
+- **研究领域**: 基于论文 concepts 自动计算作者研究领域
 - **合作分析**: 使用 GraphSAGE 和加权算法计算作者关系强度
 - **网络指标**: 机构内计算的网络中心性指标（度中心性、PageRank、中介中心性等）
 - **机构排名**: 按机构展示作者论文数和引用排名
@@ -46,29 +47,58 @@ python scripts/init_db.py
 ### 4. 运行爬虫
 
 ```bash
-# 增量爬取(默认)
-python scripts/run_crawl.py
+# 查看爬取状态
+python scripts/crawl_manager.py --status
 
-# 完整爬取
-python scripts/run_crawl.py --full
+# 爬取指定优先级的机构 (P0=高优先)
+python scripts/crawl_manager.py --priority 0
 
-# 限制数量
-python scripts/run_crawl.py --max=1000
+# 爬取所有待处理机构
+python scripts/crawl_manager.py --all
+
+# 爬取指定机构
+python scripts/crawl_manager.py --institutions I99065089 I20231570
+
+# 重试失败的机构
+python scripts/crawl_manager.py --retry-failed
+
+# 完整爬取（非增量）
+python scripts/crawl_manager.py --all --full
+
+# 限制每个机构的论文数量
+python scripts/crawl_manager.py --all --max-works 1000
+
+# 预览模式（不实际爬取）
+python scripts/crawl_manager.py --priority 0 --dry-run
 ```
 
-### 5. 作者去重
+### 5. 回填论文 Concepts（研究领域数据源）
 
 ```bash
-python scripts/deduplicate_authors.py
+# 为已有论文获取 OpenAlex concepts
+python scripts/backfill_concepts.py --batch-size 200 --concurrent 20
+
+# 限制数量（测试用）
+python scripts/backfill_concepts.py --limit 1000
 ```
 
-### 6. 运行分析（可选）
+### 6. 计算作者研究领域
+
+```bash
+# 基于论文 concepts 计算作者研究领域
+python scripts/compute_research_fields.py
+
+# 限制数量（测试用）
+python scripts/compute_research_fields.py --limit 100
+```
+
+### 7. 运行分析（可选）
 
 ```bash
 python scripts/run_analysis.py
 ```
 
-### 7. 启动后端 API 服务
+### 8. 启动后端 API 服务
 
 ```bash
 uvicorn src.api.main:app --host 0.0.0.0 --port 8000
@@ -76,7 +106,7 @@ uvicorn src.api.main:app --host 0.0.0.0 --port 8000
 
 API 文档: http://localhost:8000/api/docs
 
-### 8. 启动前端
+### 9. 启动前端
 
 ```bash
 cd frontend

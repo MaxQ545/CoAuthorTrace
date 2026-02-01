@@ -14,6 +14,7 @@ from config.settings import settings
 from src.database.models import get_session, Author
 from src.database.repositories import AuthorRepository, CollaborationRepository
 from src.analysis.relationship_scorer import RelationshipScorer
+from src.analysis.research_fields import ResearchFieldsCalculator
 from src.api.cache import get_cache, cache_key
 
 logger = logging.getLogger(__name__)
@@ -56,6 +57,14 @@ class InstitutionFrequency(BaseModel):
     count: int
 
 
+class ResearchField(BaseModel):
+    """Research field for an author."""
+    id: str
+    name: str
+    score: float
+    count: int
+
+
 class AuthorResponse(BaseModel):
     """Author response model."""
     id: str
@@ -68,6 +77,7 @@ class AuthorResponse(BaseModel):
     primary_institution_name: Optional[str] = None
     primary_institution_count: Optional[int] = None
     top_institutions: Optional[list[InstitutionFrequency]] = None
+    research_fields: Optional[list[ResearchField]] = None
     is_canonical: bool = True
     alias_ids: Optional[list[str]] = None  # Merged author IDs (simple list)
     all_ids: Optional[list[AuthorIdInfo]] = None  # All IDs with their ORCIDs
@@ -85,6 +95,7 @@ class AuthorResponse(BaseModel):
         primary_institution_name: Optional[str] = None,
         primary_institution_count: Optional[int] = None,
         top_institutions: Optional[list] = None,
+        research_fields: Optional[list] = None,
     ):
         """Create response from Author model with computed stats."""
         import json
@@ -106,6 +117,7 @@ class AuthorResponse(BaseModel):
             primary_institution_name=primary_institution_name,
             primary_institution_count=primary_institution_count,
             top_institutions=top_institutions,
+            research_fields=research_fields,
             is_canonical=author.is_canonical if author.is_canonical is not None else True,
             alias_ids=alias_ids,
             all_ids=all_ids_info,
@@ -128,6 +140,7 @@ class RankedAuthor(BaseModel):
     orcid: Optional[str] = None
     works_count: int
     cited_by_count: int = 0
+    research_fields: Optional[list[ResearchField]] = None
 
 
 class InstitutionRankingResponse(BaseModel):
@@ -256,7 +269,21 @@ async def search_authors(
             all_ids_data = repo.get_all_ids_info(author.id)
             all_ids_info = [AuthorIdInfo(**info) for info in all_ids_data]
 
-        results.append(AuthorResponse.from_author(author, works_count=works_count, all_ids_info=all_ids_info))
+        # Get research fields from cache (don't compute to keep search fast)
+        research_fields_models = None
+        if author.research_fields:
+            try:
+                rf_data = json.loads(author.research_fields)
+                research_fields_models = [ResearchField(**rf) for rf in rf_data[:3]]  # Show top 3 in search
+            except Exception:
+                pass
+
+        results.append(AuthorResponse.from_author(
+            author,
+            works_count=works_count,
+            all_ids_info=all_ids_info,
+            research_fields=research_fields_models
+        ))
 
     return AuthorSearchResponse(
         results=results,
@@ -331,17 +358,26 @@ async def get_institution_ranking(
     # Prefer requested institution name when available
     inst_name = institution_name or (results[0][0].last_known_institution_name if results else None)
 
-    authors = [
-        RankedAuthor(
+    authors = []
+    for idx, (author, works_count, cited_by_count) in enumerate(results):
+        # Get research fields from cache (show top 2 in ranking)
+        research_fields_models = None
+        if author.research_fields:
+            try:
+                rf_data = json.loads(author.research_fields)
+                research_fields_models = [ResearchField(**rf) for rf in rf_data[:2]]
+            except Exception:
+                pass
+
+        authors.append(RankedAuthor(
             rank=offset + idx + 1,
             id=author.id,
             display_name=author.display_name,
             orcid=author.orcid,
             works_count=works_count,
             cited_by_count=cited_by_count,
-        )
-        for idx, (author, works_count, cited_by_count) in enumerate(results)
-    ]
+            research_fields=research_fields_models,
+        ))
 
     return InstitutionRankingResponse(
         institution_id=institution_id,
@@ -392,6 +428,11 @@ async def get_author(
     primary_institution_count = institution_freqs[0]["count"] if institution_freqs else None
     institution_freq_models = [InstitutionFrequency(**item) for item in institution_freqs]
 
+    # Get research fields (from cache or compute)
+    research_fields_calculator = ResearchFieldsCalculator(db)
+    research_fields_data = research_fields_calculator.get_cached_or_compute(author.id, top_k=5)
+    research_fields_models = [ResearchField(**rf) for rf in research_fields_data] if research_fields_data else None
+
     return AuthorResponse.from_author(
         author,
         works_count=works_count,
@@ -400,6 +441,7 @@ async def get_author(
         primary_institution_name=primary_institution_name,
         primary_institution_count=primary_institution_count,
         top_institutions=institution_freq_models,
+        research_fields=research_fields_models,
     )
 
 

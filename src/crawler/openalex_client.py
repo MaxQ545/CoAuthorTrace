@@ -2,6 +2,7 @@
 OpenAlex API client with rate limiting and cursor pagination.
 """
 import asyncio
+import json
 import logging
 from datetime import datetime
 from typing import Optional, AsyncGenerator
@@ -220,7 +221,7 @@ class OpenAlexClient:
 
         params = {
             "per-page": min(per_page, 200),
-            "select": "id,doi,title,publication_date,type,cited_by_count,authorships,primary_location,open_access",
+            "select": "id,doi,title,publication_date,type,cited_by_count,authorships,primary_location,open_access,concepts",
         }
 
         if filter_str:
@@ -373,7 +374,25 @@ def parse_work(
         "source_id": None,
         "source_name": None,
         "is_open_access": work.get("open_access", {}).get("is_oa", False),
+        "concepts": None,
     }
+
+    # Parse concepts: filter level 1-2, score >= 0.3, keep top 10
+    raw_concepts = work.get("concepts", [])
+    filtered_concepts = [
+        {
+            "id": c.get("id", "").replace("https://openalex.org/", ""),
+            "display_name": c.get("display_name", ""),
+            "level": c.get("level", 0),
+            "score": c.get("score", 0),
+        }
+        for c in raw_concepts
+        if c.get("level") in [1, 2] and c.get("score", 0) >= 0.3
+    ]
+    if filtered_concepts:
+        # Sort by score descending and take top 10
+        filtered_concepts.sort(key=lambda x: x["score"], reverse=True)
+        work_dict["concepts"] = json.dumps(filtered_concepts[:10])
 
     # Parse publication date
     pub_date_str = work.get("publication_date")
