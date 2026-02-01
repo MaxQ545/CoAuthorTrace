@@ -38,9 +38,11 @@ ENV/
 
 # Project data
 data/*.db
+data/coauthor.db.backup
 data/*.pt
 data/models/
 logs/
+CLAUDE.md
 
 # Testing
 .coverage

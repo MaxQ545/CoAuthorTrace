@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 
 function NetworkGraph({ nodes, edges, centerNodeId, onNodeClick }) {
   const containerRef = useRef(null);
@@ -16,20 +15,41 @@ function NetworkGraph({ nodes, edges, centerNodeId, onNodeClick }) {
       const { Network } = await import('vis-network/standalone');
       const { DataSet } = await import('vis-data/standalone');
 
+      // Colors from our Tailwind theme
+      // Primary: #2563EB (blue-600)
+      // Secondary: #EFF6FF (blue-50)
+      // Node Colors
+      const centerColor = { background: '#2563EB', border: '#1E40AF' };
+      const nodeColor = { background: '#DBEAFE', border: '#3B82F6' };
+      const highlightColor = { background: '#93C5FD', border: '#1D4ED8' };
+
       // Prepare nodes with styling
       const visNodes = new DataSet(
         nodes.map((node) => ({
           id: node.id,
           label: node.label,
-          title: `${node.label}\n论文: ${node.papers || 0}\n引用: ${node.citations || 0}`,
-          color: node.id === centerNodeId
-            ? { background: '#3B82F6', border: '#1D4ED8' }
-            : { background: '#93C5FD', border: '#3B82F6' },
-          size: node.id === centerNodeId ? 30 : Math.max(15, Math.min(25, 10 + (node.collabCount || 0))),
+          title: `<div style="padding:4px; font-family: sans-serif;">
+            <strong>${node.label}</strong><br/>
+            论文: ${node.papers || 0}<br/>
+            引用: ${node.citations || 0}
+          </div>`,
+          color: node.id === centerNodeId ? centerColor : nodeColor,
+          size: node.id === centerNodeId ? 35 : Math.max(15, Math.min(30, 15 + (node.collabCount || 0) * 0.5)),
           font: {
-            size: node.id === centerNodeId ? 14 : 12,
+            size: node.id === centerNodeId ? 16 : 14,
+            face: 'Inter, system-ui, sans-serif',
             color: '#1F2937',
+            strokeWidth: 4, // White outline for text
+            strokeColor: '#ffffff',
           },
+          borderWidth: 2,
+          shadow: {
+            enabled: true,
+            color: 'rgba(0,0,0,0.1)',
+            size: 10,
+            x: 5,
+            y: 5
+          }
         }))
       );
 
@@ -41,45 +61,61 @@ function NetworkGraph({ nodes, edges, centerNodeId, onNodeClick }) {
           to: edge.to,
           value: edge.weight || 1,
           title: `合作次数: ${edge.count || 1}`,
-          color: { color: '#CBD5E1', highlight: '#3B82F6' },
+          color: { color: '#E2E8F0', highlight: '#3B82F6', opacity: 0.8 },
+          width: Math.max(1, Math.min(5, (edge.count || 1) * 0.5)),
         }))
       );
 
       const options = {
         nodes: {
           shape: 'dot',
-          borderWidth: 2,
-          shadow: true,
+          scaling: {
+            min: 10,
+            max: 40,
+            label: {
+              enabled: true,
+              min: 12,
+              max: 20,
+            },
+          },
         },
         edges: {
-          width: 1,
           smooth: {
             type: 'continuous',
-          },
-          scaling: {
-            min: 1,
-            max: 5,
+            forceDirection: 'none',
+            roundness: 0.5
           },
         },
         physics: {
           enabled: true,
           solver: 'forceAtlas2Based',
           forceAtlas2Based: {
-            gravitationalConstant: -50,
-            centralGravity: 0.01,
-            springLength: 100,
-            springConstant: 0.08,
+            gravitationalConstant: -80,
+            centralGravity: 0.005,
+            springLength: 150,
+            springConstant: 0.05,
+            damping: 0.4,
+            avoidOverlap: 0.5
           },
           stabilization: {
-            iterations: 100,
+            enabled: true,
+            iterations: 200,
+            updateInterval: 25,
+            onlyDynamicEdges: false,
+            fit: true,
           },
         },
         interaction: {
           hover: true,
-          tooltipDelay: 200,
+          tooltipDelay: 100,
           zoomView: true,
           dragView: true,
+          navigationButtons: false,
+          keyboard: false,
         },
+        layout: {
+          improvedLayout: true,
+        }
       };
 
       // Destroy existing network
@@ -119,22 +155,11 @@ function NetworkGraph({ nodes, edges, centerNodeId, onNodeClick }) {
   }, [nodes, edges, centerNodeId]);
 
   return (
-    <div className="relative">
-      {loading && (
-        <div className="absolute inset-0 flex items-center justify-center bg-white bg-opacity-75 z-10">
-          <div className="text-center">
-            <div className="animate-spin text-4xl mb-2">⏳</div>
-            <p className="text-gray-600">正在生成网络图...</p>
-          </div>
-        </div>
-      )}
+    <div className="relative w-full h-full min-h-[500px] bg-slate-50/50">
       <div
         ref={containerRef}
-        className="w-full h-[500px] border border-gray-200 rounded-lg bg-white"
+        className="w-full h-full absolute inset-0 outline-none"
       />
-      <div className="mt-2 text-sm text-gray-500 text-center">
-        点击节点查看作者详情 · 滚轮缩放 · 拖拽移动
-      </div>
     </div>
   );
 }

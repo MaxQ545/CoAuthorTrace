@@ -1,6 +1,9 @@
 import { useState, useEffect } from 'react';
 import api from '../api/client';
 import { useTimeFilter } from '../contexts/TimeFilterContext';
+import { X, Calendar, BookOpen, ExternalLink, ArrowUpDown, Lock, Unlock, Loader2, Quote } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { cn } from '../lib/utils';
 
 function CoAuthoredPapersModal({
   isOpen,
@@ -20,7 +23,7 @@ function CoAuthoredPapersModal({
   const [offset, setOffset] = useState(0);
   const [sortBy, setSortBy] = useState('publication_date');
   const [sortOrder, setSortOrder] = useState('desc');
-  const limit = 20;
+  const limit = 10; // Smaller limit for modal
 
   useEffect(() => {
     if (isOpen && authorId && collaboratorId) {
@@ -62,7 +65,6 @@ function CoAuthoredPapersModal({
 
   const handleSortChange = (newSortBy) => {
     if (newSortBy === sortBy) {
-      // Toggle order if same field
       setSortOrder(sortOrder === 'desc' ? 'asc' : 'desc');
     } else {
       setSortBy(newSortBy);
@@ -74,180 +76,181 @@ function CoAuthoredPapersModal({
   const totalPages = Math.ceil(total / limit);
   const currentPage = Math.floor(offset / limit) + 1;
 
-  if (!isOpen) return null;
-
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col">
-        {/* Header */}
-        <div className="p-4 border-b border-gray-200 flex items-center justify-between">
-          <div>
-            <h2 className="text-lg font-semibold text-gray-900">
-              合作论文
-            </h2>
-            <p className="text-sm text-gray-600 mt-1">
-              {authorName} 与 {collaboratorName} 共同发表的论文
-            </p>
-          </div>
-          <button
+    <AnimatePresence>
+      {isOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6">
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
             onClick={onClose}
-            className="text-gray-400 hover:text-gray-600 p-1"
-          >
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
+            className="absolute inset-0 bg-background/80 backdrop-blur-sm"
+          />
 
-        {/* Sort controls */}
-        <div className="px-4 py-2 bg-gray-50 border-b border-gray-200 flex items-center space-x-4">
-          <span className="text-sm text-gray-600">排序:</span>
-          <button
-            onClick={() => handleSortChange('publication_date')}
-            className={`text-sm px-3 py-1 rounded ${
-              sortBy === 'publication_date'
-                ? 'bg-blue-100 text-blue-700'
-                : 'text-gray-600 hover:bg-gray-100'
-            }`}
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95, y: 20 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.95, y: 20 }}
+            className="relative w-full max-w-4xl bg-card border border-border rounded-xl shadow-2xl flex flex-col max-h-[85vh] overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
           >
-            日期 {sortBy === 'publication_date' && (sortOrder === 'desc' ? '↓' : '↑')}
-          </button>
-          <button
-            onClick={() => handleSortChange('cited_by_count')}
-            className={`text-sm px-3 py-1 rounded ${
-              sortBy === 'cited_by_count'
-                ? 'bg-blue-100 text-blue-700'
-                : 'text-gray-600 hover:bg-gray-100'
-            }`}
-          >
-            引用数 {sortBy === 'cited_by_count' && (sortOrder === 'desc' ? '↓' : '↑')}
-          </button>
-          <button
-            onClick={() => handleSortChange('title')}
-            className={`text-sm px-3 py-1 rounded ${
-              sortBy === 'title'
-                ? 'bg-blue-100 text-blue-700'
-                : 'text-gray-600 hover:bg-gray-100'
-            }`}
-          >
-            标题 {sortBy === 'title' && (sortOrder === 'desc' ? '↓' : '↑')}
-          </button>
-          <span className="text-sm text-gray-500 ml-auto">
-            共 {total} 篇论文
-          </span>
-        </div>
-
-        {/* Content */}
-        <div className="flex-1 overflow-y-auto p-4">
-          {loading ? (
-            <div className="flex items-center justify-center h-32">
-              <div className="text-center">
-                <div className="animate-spin text-2xl mb-2">⏳</div>
-                <p className="text-gray-600 text-sm">加载中...</p>
+            {/* Header */}
+            <div className="p-6 border-b border-border bg-muted/10 flex items-start justify-between">
+              <div>
+                <h2 className="text-xl font-bold text-foreground">
+                  合作论文详情
+                </h2>
+                <p className="text-sm text-muted-foreground mt-1 flex items-center gap-2">
+                  <span className="font-medium text-foreground">{authorName}</span>
+                  <span className="text-muted-foreground/50">×</span>
+                  <span className="font-medium text-foreground">{collaboratorName}</span>
+                </p>
               </div>
-            </div>
-          ) : error ? (
-            <div className="text-center py-8">
-              <div className="text-2xl mb-2">😕</div>
-              <p className="text-gray-600">{error}</p>
               <button
-                onClick={loadPapers}
-                className="mt-2 text-blue-600 hover:underline text-sm"
+                onClick={onClose}
+                className="p-2 text-muted-foreground hover:text-foreground hover:bg-secondary rounded-full transition-colors"
               >
-                重试
+                <X size={20} />
               </button>
             </div>
-          ) : papers.length === 0 ? (
-            <div className="text-center py-8 text-gray-500">
-              暂无论文数据
+
+            {/* Toolbar */}
+            <div className="px-6 py-3 border-b border-border bg-muted/5 flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-2 text-sm">
+                <span className="text-muted-foreground">排序:</span>
+                {[
+                  { id: 'publication_date', label: '日期' },
+                  { id: 'cited_by_count', label: '引用' },
+                  { id: 'title', label: '标题' }
+                ].map((item) => (
+                  <button
+                    key={item.id}
+                    onClick={() => handleSortChange(item.id)}
+                    className={cn(
+                      "px-3 py-1.5 rounded-md text-xs font-medium transition-colors flex items-center gap-1",
+                      sortBy === item.id
+                        ? "bg-primary text-primary-foreground shadow-sm"
+                        : "bg-secondary text-muted-foreground hover:bg-secondary/80"
+                    )}
+                  >
+                    {item.label}
+                    {sortBy === item.id && <ArrowUpDown size={10} />}
+                  </button>
+                ))}
+              </div>
+              <div className="text-xs font-medium text-muted-foreground bg-secondary px-2.5 py-1 rounded-full">
+                共 {total} 篇合作论文
+              </div>
             </div>
-          ) : (
-            <div className="space-y-3">
-              {papers.map((paper, index) => (
-                <div
-                  key={paper.id}
-                  className="p-4 border border-gray-200 rounded-lg hover:shadow-sm transition-shadow"
-                >
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1">
-                      <div className="flex items-center space-x-2">
-                        <span className="text-xs text-gray-400">
-                          {offset + index + 1}.
-                        </span>
-                        <h3 className="font-medium text-gray-900">
-                          {paper.title}
-                        </h3>
-                      </div>
-                      <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-gray-600">
-                        {paper.publication_date && (
-                          <span>
-                            📅 {paper.publication_date}
-                          </span>
-                        )}
-                        {paper.source_name && (
-                          <span className="truncate max-w-xs" title={paper.source_name}>
-                            📖 {paper.source_name}
-                          </span>
-                        )}
-                        <span>
-                          📊 {paper.cited_by_count} 次引用
-                        </span>
-                        {paper.is_open_access && (
-                          <span className="text-green-600">
-                            🔓 开放获取
-                          </span>
+
+            {/* List Content */}
+            <div className="flex-1 overflow-y-auto p-6 scrollbar-thin">
+              {loading ? (
+                <div className="flex flex-col items-center justify-center h-48 text-muted-foreground">
+                  <Loader2 className="h-8 w-8 animate-spin mb-3 text-primary" />
+                  <p>正在加载...</p>
+                </div>
+              ) : error ? (
+                <div className="flex flex-col items-center justify-center h-48 text-destructive">
+                  <p className="font-medium mb-2">{error}</p>
+                  <button onClick={loadPapers} className="text-sm underline hover:text-destructive/80">重试</button>
+                </div>
+              ) : papers.length === 0 ? (
+                <div className="text-center py-12 text-muted-foreground">
+                  暂无符合条件的论文数据
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {papers.map((paper, index) => (
+                    <div
+                      key={paper.id}
+                      className="group p-4 rounded-xl border border-border bg-card hover:border-primary/30 hover:shadow-md transition-all duration-200"
+                    >
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-start gap-3">
+                            <span className="text-xs font-mono text-muted-foreground mt-1 min-w-[1.5rem]">
+                              {offset + index + 1}.
+                            </span>
+                            <div>
+                              <h3 className="text-base font-semibold text-foreground leading-tight mb-2 group-hover:text-primary transition-colors">
+                                {paper.title}
+                              </h3>
+
+                              <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-muted-foreground">
+                                {paper.publication_date && (
+                                  <div className="flex items-center gap-1.5 bg-secondary/30 px-2 py-1 rounded">
+                                    <Calendar size={12} />
+                                    <span>{paper.publication_date}</span>
+                                  </div>
+                                )}
+                                {paper.source_name && (
+                                  <div className="flex items-center gap-1.5 max-w-[200px]">
+                                    <BookOpen size={12} />
+                                    <span className="truncate" title={paper.source_name}>
+                                      {paper.source_name}
+                                    </span>
+                                  </div>
+                                )}
+                                <div className="flex items-center gap-1.5 text-foreground/80">
+                                  <Quote size={12} />
+                                  <span className="font-mono font-medium">{paper.cited_by_count}</span>
+                                </div>
+                                {paper.is_open_access && (
+                                  <div className="flex items-center gap-1 text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full dark:bg-emerald-900/20 dark:text-emerald-400">
+                                    <Unlock size={10} /> <span>OA</span>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+
+                        {paper.doi && (
+                          <a
+                            href={`https://doi.org/${paper.doi}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="shrink-0 p-2 text-muted-foreground hover:text-primary hover:bg-secondary rounded-lg transition-colors"
+                            title="View DOI"
+                          >
+                            <ExternalLink size={18} />
+                          </a>
                         )}
                       </div>
                     </div>
-                    {paper.doi && (
-                      <a
-                        href={`https://doi.org/${paper.doi}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="ml-4 text-xs px-3 py-1 bg-blue-100 text-blue-700 rounded-full hover:bg-blue-200 whitespace-nowrap"
-                      >
-                        DOI
-                      </a>
-                    )}
-                  </div>
+                  ))}
                 </div>
-              ))}
+              )}
             </div>
-          )}
-        </div>
 
-        {/* Pagination */}
-        {totalPages > 1 && (
-          <div className="p-4 border-t border-gray-200 flex items-center justify-between">
-            <button
-              onClick={() => setOffset(Math.max(0, offset - limit))}
-              disabled={offset === 0}
-              className={`px-3 py-1 rounded text-sm ${
-                offset === 0
-                  ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                  : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-              }`}
-            >
-              上一页
-            </button>
-            <span className="text-sm text-gray-600">
-              第 {currentPage} / {totalPages} 页
-            </span>
-            <button
-              onClick={() => setOffset(offset + limit)}
-              disabled={currentPage >= totalPages}
-              className={`px-3 py-1 rounded text-sm ${
-                currentPage >= totalPages
-                  ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                  : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-              }`}
-            >
-              下一页
-            </button>
-          </div>
-        )}
-      </div>
-    </div>
+            {/* Pagination Footer */}
+            {totalPages > 1 && (
+              <div className="p-4 border-t border-border bg-muted/5 flex items-center justify-between">
+                <button
+                  onClick={() => setOffset(Math.max(0, offset - limit))}
+                  disabled={offset === 0}
+                  className="px-4 py-2 text-sm font-medium rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-secondary transition-colors"
+                >
+                  上一页
+                </button>
+                <span className="text-sm font-medium text-muted-foreground">
+                  第 <span className="text-foreground">{currentPage}</span> / {totalPages} 页
+                </span>
+                <button
+                  onClick={() => setOffset(offset + limit)}
+                  disabled={currentPage >= totalPages}
+                  className="px-4 py-2 text-sm font-medium rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-secondary transition-colors"
+                >
+                  下一页
+                </button>
+              </div>
+            )}
+          </motion.div>
+        </div>
+      )}
+    </AnimatePresence>
   );
 }
 
