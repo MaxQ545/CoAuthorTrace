@@ -3,6 +3,9 @@ import { Link, useSearchParams } from 'react-router-dom';
 import api from '../api/client';
 import { useTimeFilter } from '../contexts/TimeFilterContext';
 import ResearchFieldsBadges from '../components/ResearchFieldsBadges';
+import { Building2, ChevronRight, GraduationCap, FileText, Quote, Loader2, AlertCircle, ExternalLink } from 'lucide-react';
+import { cn } from '../lib/utils';
+import { motion } from 'framer-motion';
 
 function RankingPage() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -30,6 +33,10 @@ function RankingPage() {
     try {
       const data = await api.getInstitutions();
       setInstitutions(data.institutions || []);
+      // Auto-select first institution if none selected and list available
+      if (!selectedInstitutionId && data.institutions?.length > 0) {
+        setSearchParams({ institution_id: data.institutions[0].id });
+      }
     } catch (err) {
       console.error('Failed to load institutions:', err);
     } finally {
@@ -48,7 +55,7 @@ function RankingPage() {
       setRanking(data);
     } catch (err) {
       console.error('Failed to load ranking:', err);
-      setError('Failed to load ranking');
+      setError('加载排名数据失败，请稍后重试');
     } finally {
       setLoading(false);
     }
@@ -60,136 +67,153 @@ function RankingPage() {
 
   if (loading && !institutions.length) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-center">
-          <div className="animate-spin text-4xl mb-4">...</div>
-          <p className="text-gray-600">Loading...</p>
-        </div>
+      <div className="flex flex-col items-center justify-center h-[60vh] text-muted-foreground">
+        <Loader2 className="h-10 w-10 animate-spin mb-4 text-primary" />
+        <p>正在加载机构数据...</p>
       </div>
     );
   }
 
   return (
-    <div className="space-y-6">
-      {/* Breadcrumb */}
-      <nav className="text-sm text-gray-500">
-        <Link to="/" className="hover:text-blue-600">Home</Link>
-        <span className="mx-2">/</span>
-        <span className="text-gray-900">Institution Rankings</span>
-      </nav>
+    <div className="space-y-8 animate-fade-in">
+      {/* Header */}
+      <div>
+        <h1 className="text-3xl font-bold tracking-tight text-foreground mb-2">机构学者排行</h1>
+        <p className="text-muted-foreground">
+          查看各合作机构的学者影响力排名，基于发表论文数量与引用影响力。
+        </p>
+      </div>
 
-      <h1 className="text-2xl font-bold text-gray-900">Institution Author Rankings</h1>
-
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-        {/* Institution List */}
-        <div className="lg:col-span-1">
-          <div className="bg-white rounded-lg border border-gray-200 p-4">
-            <h2 className="text-lg font-semibold text-gray-900 mb-4">
-              Institutions ({institutions.length})
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+        {/* Institution List - Sidebar */}
+        <div className="lg:col-span-3 space-y-4">
+          <div className="bg-card rounded-xl border border-border shadow-sm p-4 sticky top-24">
+            <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-4 px-2">
+              合作机构 ({institutions.length})
             </h2>
-            <div className="space-y-2 max-h-[600px] overflow-y-auto">
+            <div className="space-y-1 max-h-[calc(100vh-12rem)] overflow-y-auto pr-1 scrollbar-thin">
               {institutions.map((inst) => (
                 <button
                   key={inst.id}
                   onClick={() => handleInstitutionSelect(inst.id)}
-                  className={`w-full text-left px-3 py-2 rounded-lg transition-colors ${
+                  className={cn(
+                    "w-full text-left px-3 py-2.5 rounded-lg transition-all duration-200 flex flex-col group",
                     selectedInstitutionId === inst.id
-                      ? 'bg-blue-100 text-blue-700 border border-blue-300'
-                      : 'hover:bg-gray-100 text-gray-700'
-                  }`}
+                      ? "bg-primary text-primary-foreground shadow-md"
+                      : "hover:bg-secondary text-foreground"
+                  )}
                 >
-                  <div className="font-medium text-sm truncate">{inst.name}</div>
-                  <div className="text-xs text-gray-500">{inst.author_count} authors</div>
+                  <div className="font-medium text-sm truncate w-full flex items-center justify-between">
+                    <span className="truncate">{inst.name}</span>
+                    {selectedInstitutionId === inst.id && <ChevronRight size={14} />}
+                  </div>
+                  <div className={cn(
+                    "text-xs mt-0.5",
+                    selectedInstitutionId === inst.id ? "text-primary-foreground/80" : "text-muted-foreground"
+                  )}>
+                    {inst.author_count} 位学者
+                  </div>
                 </button>
               ))}
             </div>
           </div>
         </div>
 
-        {/* Ranking Table */}
-        <div className="lg:col-span-3">
+        {/* Ranking Table - Main Content */}
+        <div className="lg:col-span-9">
           {selectedInstitutionId ? (
             loading ? (
-              <div className="flex items-center justify-center h-64">
-                <div className="text-center">
-                  <div className="animate-spin text-4xl mb-4">...</div>
-                  <p className="text-gray-600">Loading ranking...</p>
-                </div>
+              <div className="flex flex-col items-center justify-center h-64 text-muted-foreground bg-card rounded-xl border border-border">
+                <Loader2 className="h-8 w-8 animate-spin mb-3 text-primary" />
+                <p>正在计算排名数据...</p>
               </div>
             ) : error ? (
-              <div className="text-center py-12">
-                <p className="text-red-500">{error}</p>
+              <div className="bg-destructive/10 border border-destructive/20 rounded-xl p-8 text-center text-destructive">
+                <AlertCircle className="h-10 w-10 mx-auto mb-4" />
+                <p className="font-medium">{error}</p>
               </div>
             ) : ranking ? (
-              <div className="bg-white rounded-lg border border-gray-200 p-6">
-                <div className="flex items-center justify-between mb-4">
-                  <h2 className="text-lg font-semibold text-gray-900">
-                    {ranking.institution_name}
-                  </h2>
-                  <span className="text-sm text-gray-500">
-                    Total {ranking.total} authors
-                  </span>
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="bg-card rounded-xl border border-border shadow-sm overflow-hidden"
+              >
+                <div className="px-6 py-5 border-b border-border bg-muted/20 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 bg-primary/10 rounded-lg text-primary">
+                      <Building2 size={24} />
+                    </div>
+                    <div>
+                      <h2 className="text-xl font-bold text-foreground">
+                        {ranking.institution_name}
+                      </h2>
+                      <p className="text-sm text-muted-foreground">
+                        共收录 {ranking.total} 位学者
+                      </p>
+                    </div>
+                  </div>
                 </div>
 
                 <div className="overflow-x-auto">
-                  <table className="w-full">
-                    <thead>
-                      <tr className="border-b border-gray-200">
-                        <th className="text-left py-3 px-2 text-sm font-semibold text-gray-600 w-16">Rank</th>
-                        <th className="text-left py-3 px-2 text-sm font-semibold text-gray-600">Author</th>
-                        <th className="text-left py-3 px-2 text-sm font-semibold text-gray-600">Research Fields</th>
-                        <th className="text-right py-3 px-2 text-sm font-semibold text-gray-600 w-24">Papers</th>
-                        <th className="text-right py-3 px-2 text-sm font-semibold text-gray-600 w-24">Citations</th>
-                        <th className="text-center py-3 px-2 text-sm font-semibold text-gray-600 w-20">ORCID</th>
+                  <table className="w-full text-sm text-left">
+                    <thead className="bg-muted/50 text-muted-foreground font-medium border-b border-border">
+                      <tr>
+                        <th className="py-4 px-6 w-16 text-center">排名</th>
+                        <th className="py-4 px-6">学者</th>
+                        <th className="py-4 px-6 hidden md:table-cell">研究领域</th>
+                        <th className="py-4 px-6 text-right w-24">论文数</th>
+                        <th className="py-4 px-6 text-right w-24">被引数</th>
+                        <th className="py-4 px-6 text-center w-20">ORCID</th>
                       </tr>
                     </thead>
-                    <tbody>
+                    <tbody className="divide-y divide-border/50">
                       {ranking.authors.map((author) => (
                         <tr
                           key={author.id}
-                          className="border-b border-gray-100 hover:bg-gray-50"
+                          className="hover:bg-muted/30 transition-colors group"
                         >
-                          <td className="py-3 px-2">
-                            <span className={`inline-flex items-center justify-center w-8 h-8 rounded-full text-sm font-bold ${
+                          <td className="py-3 px-6 text-center">
+                            <span className={cn(
+                              "inline-flex items-center justify-center w-6 h-6 rounded-full text-xs font-bold",
                               author.rank <= 3
-                                ? 'bg-yellow-100 text-yellow-700'
+                                ? "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400"
                                 : author.rank <= 10
-                                ? 'bg-blue-100 text-blue-600'
-                                : 'bg-gray-100 text-gray-600'
-                            }`}>
+                                ? "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-400"
+                                : "text-muted-foreground bg-secondary"
+                            )}>
                               {author.rank}
                             </span>
                           </td>
-                          <td className="py-3 px-2">
+                          <td className="py-3 px-6">
                             <Link
                               to={`/author/${author.id}`}
-                              className="text-blue-600 hover:underline font-medium"
+                              className="font-semibold text-foreground hover:text-primary transition-colors flex items-center gap-2"
                             >
                               {author.display_name}
                             </Link>
                           </td>
-                          <td className="py-3 px-2">
+                          <td className="py-3 px-6 hidden md:table-cell">
                             <ResearchFieldsBadges fields={author.research_fields} maxDisplay={2} />
                           </td>
-                          <td className="py-3 px-2 text-right font-mono text-sm">
+                          <td className="py-3 px-6 text-right font-mono text-muted-foreground">
                             {author.works_count}
                           </td>
-                          <td className="py-3 px-2 text-right font-mono text-sm text-gray-600">
+                          <td className="py-3 px-6 text-right font-mono text-muted-foreground">
                             {author.cited_by_count}
                           </td>
-                          <td className="py-3 px-2 text-center">
+                          <td className="py-3 px-6 text-center">
                             {author.orcid ? (
                               <a
                                 href={author.orcid}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="text-green-600 hover:text-green-700"
+                                className="inline-flex items-center justify-center text-emerald-600 hover:text-emerald-500 transition-colors"
                                 title={author.orcid}
                               >
-                                V
+                                <ExternalLink size={14} />
                               </a>
                             ) : (
-                              <span className="text-gray-300">-</span>
+                              <span className="text-muted-foreground/30">-</span>
                             )}
                           </td>
                         </tr>
@@ -197,12 +221,12 @@ function RankingPage() {
                     </tbody>
                   </table>
                 </div>
-              </div>
+              </motion.div>
             ) : null
           ) : (
-            <div className="bg-white rounded-lg border border-gray-200 p-12 text-center">
-              <div className="text-4xl mb-4">...</div>
-              <p className="text-gray-500">Select an institution to view the author ranking</p>
+            <div className="flex flex-col items-center justify-center h-64 text-muted-foreground bg-card rounded-xl border border-dashed border-border">
+              <Building2 className="h-12 w-12 opacity-20 mb-4" />
+              <p>请从左侧选择一个机构查看排名</p>
             </div>
           )}
         </div>

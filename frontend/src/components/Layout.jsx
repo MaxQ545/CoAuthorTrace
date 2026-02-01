@@ -1,62 +1,155 @@
 import { Link, useLocation } from 'react-router-dom';
 import TimeRangeSelector from './TimeRangeSelector';
+import { LayoutDashboard, Network, Trophy, BookOpen, Sun, Moon } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { cn } from '../lib/utils';
+import { useState, useEffect } from 'react';
 
 function Layout({ children }) {
   const location = useLocation();
+  const [isDark, setIsDark] = useState(() => {
+    // Check localStorage or system preference on initial load
+    if (typeof window !== 'undefined') {
+      return localStorage.theme === 'dark' ||
+        (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches);
+    }
+    return false;
+  });
+
+  useEffect(() => {
+    const root = window.document.documentElement;
+    if (isDark) {
+      root.classList.add('dark');
+      localStorage.theme = 'dark';
+    } else {
+      root.classList.remove('dark');
+      localStorage.theme = 'light';
+    }
+  }, [isDark]);
+
+  const toggleTheme = () => setIsDark(!isDark);
 
   const navItems = [
-    { path: '/', label: '首页', icon: '🏠' },
-    { path: '/ranking', label: '机构排行', icon: '🏆' },
-    { path: '/network', label: '合作网络', icon: '🕸️' },
+    { path: '/', label: '首页', icon: LayoutDashboard },
+    { path: '/ranking', label: '机构排行', icon: Trophy },
+    { path: '/network', label: '合作网络', icon: Network },
   ];
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <header className="bg-white shadow-sm border-b">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-16">
-            <Link to="/" className="flex items-center space-x-3">
-              <span className="text-2xl">📚</span>
-              <span className="text-xl font-bold text-gray-900">
-                论文合作者追踪系统
-              </span>
-            </Link>
+    <div className="min-h-screen bg-background text-foreground flex flex-col transition-colors duration-300">
+      {/* Navbar */}
+      <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+        <div className="container mx-auto px-4 h-16 flex items-center justify-between">
+          <Link to="/" className="flex items-center space-x-2 group">
+            <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center text-primary-foreground transform group-hover:rotate-12 transition-transform">
+              <BookOpen size={20} />
+            </div>
+            <span className="text-xl font-bold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-primary to-blue-600 dark:from-blue-400 dark:to-violet-400">
+              CoAuthor<span className="text-foreground font-light">Trace</span>
+            </span>
+          </Link>
 
-            <nav className="flex space-x-4">
-              {navItems.map((item) => (
+          <nav className="flex items-center space-x-2">
+            {navItems.map((item) => {
+              const Icon = item.icon;
+              const isActive = location.pathname === item.path;
+              return (
                 <Link
                   key={item.path}
                   to={item.path}
-                  className={`px-3 py-2 rounded-md text-sm font-medium transition-colors ${
-                    location.pathname === item.path
-                      ? 'bg-blue-100 text-blue-700'
-                      : 'text-gray-600 hover:bg-gray-100'
-                  }`}
+                  className={cn(
+                    "relative px-4 py-2 rounded-md text-sm font-medium transition-all duration-200 flex items-center space-x-2 hidden md:flex",
+                    isActive
+                      ? "text-primary bg-primary/10"
+                      : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                  )}
                 >
-                  <span className="mr-1">{item.icon}</span>
-                  {item.label}
+                  <Icon size={16} />
+                  <span>{item.label}</span>
+                  {isActive && (
+                    <motion.div
+                      layoutId="navbar-indicator"
+                      className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary rounded-full mx-4"
+                      initial={false}
+                      transition={{ type: "spring", stiffness: 500, damping: 30 }}
+                    />
+                  )}
                 </Link>
-              ))}
-            </nav>
-          </div>
+              );
+            })}
+
+            {/* Mobile Nav Icons (Text Hidden) */}
+            {navItems.map((item) => {
+               const Icon = item.icon;
+               const isActive = location.pathname === item.path;
+               return (
+                 <Link
+                   key={`${item.path}-mobile`}
+                   to={item.path}
+                   className={cn(
+                     "p-2 rounded-md text-sm font-medium transition-all duration-200 md:hidden",
+                     isActive
+                       ? "text-primary bg-primary/10"
+                       : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                   )}
+                 >
+                   <Icon size={20} />
+                 </Link>
+               );
+            })}
+
+            {/* Theme Toggle Button */}
+            <button
+              onClick={toggleTheme}
+              className="ml-2 p-2 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors focus:outline-none focus:ring-2 focus:ring-primary/20"
+              aria-label="Toggle theme"
+            >
+              <AnimatePresence mode="wait" initial={false}>
+                <motion.div
+                  key={isDark ? 'dark' : 'light'}
+                  initial={{ y: -20, opacity: 0, rotate: -90 }}
+                  animate={{ y: 0, opacity: 1, rotate: 0 }}
+                  exit={{ y: 20, opacity: 0, rotate: 90 }}
+                  transition={{ duration: 0.2 }}
+                >
+                  {isDark ? <Moon size={20} /> : <Sun size={20} />}
+                </motion.div>
+              </AnimatePresence>
+            </button>
+          </nav>
         </div>
       </header>
 
-      {/* Time Range Filter */}
-      <TimeRangeSelector />
+      {/* Time Filter Banner */}
+      <div className="bg-muted/30 border-b">
+        <div className="container mx-auto px-4 py-2">
+           <TimeRangeSelector />
+        </div>
+      </div>
 
       {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {children}
+      <main className="flex-1 container mx-auto px-4 py-8">
+        <motion.div
+          key={location.pathname}
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3 }}
+        >
+          {children}
+        </motion.div>
       </main>
 
       {/* Footer */}
-      <footer className="bg-white border-t mt-auto">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-          <p className="text-center text-gray-500 text-sm">
-            基于 OpenAlex 数据 · 论文合作关系分析
-          </p>
+      <footer className="border-t bg-muted/20 mt-auto">
+        <div className="container mx-auto px-4 py-8">
+          <div className="flex flex-col md:flex-row justify-between items-center text-sm text-muted-foreground">
+            <p>© 2026 CoAuthorTrace. Powered by OpenAlex.</p>
+            <div className="flex space-x-4 mt-4 md:mt-0">
+              <a href="#" className="hover:text-foreground transition-colors">Privacy</a>
+              <a href="#" className="hover:text-foreground transition-colors">Terms</a>
+              <a href="#" className="hover:text-foreground transition-colors">API</a>
+            </div>
+          </div>
         </div>
       </footer>
     </div>

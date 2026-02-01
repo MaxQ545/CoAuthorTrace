@@ -1,7 +1,11 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
-function SearchBox({ onSearch, placeholder = '搜索作者...', loading = false }) {
-  const [query, setQuery] = useState('');
+function SearchBox({ onSearch, placeholder = '搜索作者...', loading = false, defaultValue = '' }) {
+  const [query, setQuery] = useState(defaultValue);
+
+  useEffect(() => {
+    setQuery(defaultValue);
+  }, [defaultValue]);
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -18,12 +22,12 @@ function SearchBox({ onSearch, placeholder = '搜索作者...', loading = false 
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder={placeholder}
-          className="flex-1 px-4 py-3 border border-gray-300 rounded-l-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+          className="flex-1 px-4 py-3 bg-background border border-border text-foreground placeholder:text-muted-foreground rounded-l-lg focus:ring-2 focus:ring-primary focus:border-primary outline-none transition-colors"
         />
         <button
           type="submit"
           disabled={loading || !query.trim()}
-          className="px-6 py-3 bg-blue-600 text-white rounded-r-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
+          className="px-6 py-3 bg-primary text-primary-foreground rounded-r-lg hover:bg-primary/90 disabled:bg-muted disabled:text-muted-foreground disabled:cursor-not-allowed transition-colors font-medium"
         >
           {loading ? (
             <span className="inline-block animate-spin">⏳</span>

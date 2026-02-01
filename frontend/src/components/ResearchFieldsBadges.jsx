@@ -1,6 +1,8 @@
+import { cn } from '../lib/utils';
+
 /**
  * Research fields display component.
- * Shows research fields as purple rounded badges.
+ * Shows research fields as styled badges.
  */
 function ResearchFieldsBadges({ fields, maxDisplay = 3, showCount = false }) {
   if (!fields || fields.length === 0) {
@@ -15,17 +17,20 @@ function ResearchFieldsBadges({ fields, maxDisplay = 3, showCount = false }) {
       {displayFields.map((field) => (
         <span
           key={field.id}
-          className="text-xs px-2 py-0.5 bg-purple-100 text-purple-700 rounded-full"
+          className={cn(
+            "inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium transition-colors border",
+            "bg-primary/5 text-primary border-primary/20 hover:bg-primary/10"
+          )}
           title={showCount ? `${field.count} papers, avg score ${field.score.toFixed(2)}` : field.name}
         >
           {field.name}
           {showCount && (
-            <span className="ml-1 text-purple-500">({field.count})</span>
+            <span className="ml-1 opacity-70">({field.count})</span>
           )}
         </span>
       ))}
       {remaining > 0 && (
-        <span className="text-xs px-2 py-0.5 bg-gray-100 text-gray-500 rounded-full">
+        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-secondary text-secondary-foreground border border-secondary hover:bg-secondary/80 transition-colors">
           +{remaining}
         </span>
       )}

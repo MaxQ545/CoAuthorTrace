@@ -24,7 +24,7 @@ class ApiClient {
   }
 
   async getSystemStats() {
-    return this.request('/system/stats');
+    return this.request('/system/status');
   }
 
   // Author endpoints

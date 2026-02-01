@@ -1,9 +1,12 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '../api/client';
 import NetworkGraph from '../components/NetworkGraph';
 import SearchBox from '../components/SearchBox';
 import { useTimeFilter } from '../contexts/TimeFilterContext';
+import { Network, Users, User, ArrowRight, Loader2, Info } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { cn } from '../lib/utils';
 
 function NetworkPage() {
   const { authorId } = useParams();
@@ -16,12 +19,26 @@ function NetworkPage() {
   const [loading, setLoading] = useState(false);
   const [searchResults, setSearchResults] = useState([]);
   const [searching, setSearching] = useState(false);
+  const searchRef = useRef(null);
 
   useEffect(() => {
     if (authorId) {
       loadAuthorNetwork(authorId);
     }
   }, [authorId, timeRange.fromYear, timeRange.toYear]);
+
+  // Close search results when clicking outside
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (searchRef.current && !searchRef.current.contains(event.target)) {
+        setSearchResults([]);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [searchRef]);
 
   const loadAuthorNetwork = async (id) => {
     setLoading(true);
@@ -94,131 +111,152 @@ function NetworkPage() {
   };
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-gray-900">
-          🕸️ 合作网络可视化
-        </h1>
-      </div>
+    <div className="space-y-6 animate-fade-in h-[calc(100vh-140px)] flex flex-col">
+      {/* Header & Search */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
+            <Network className="text-primary" />
+            合作网络可视化
+          </h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            探索作者之间的学术合作关系与社群结构
+          </p>
+        </div>
 
-      {/* Search */}
-      <div className="bg-white rounded-lg border border-gray-200 p-4">
-        <label className="block text-sm font-medium text-gray-700 mb-2">
-          选择一位作者查看其合作网络:
-        </label>
-        <SearchBox
-          onSearch={handleSearch}
-          placeholder="输入作者姓名搜索..."
-          loading={searching}
-        />
+        <div className="relative w-full md:w-96 z-20" ref={searchRef}>
+          <SearchBox
+            onSearch={handleSearch}
+            placeholder="搜索作者以生成网络..."
+            loading={searching}
+          />
 
-        {/* Search Results Dropdown */}
-        {searchResults.length > 0 && (
-          <div className="mt-2 border border-gray-200 rounded-lg divide-y max-h-64 overflow-auto">
-            {searchResults.map((result) => (
-              <button
-                key={result.id}
-                onClick={() => selectAuthor(result.id)}
-                className="w-full px-4 py-2 text-left hover:bg-gray-50 flex justify-between items-center"
+          <AnimatePresence>
+            {searchResults.length > 0 && (
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: 10 }}
+                className="absolute top-full left-0 right-0 mt-2 bg-popover border border-border rounded-xl shadow-xl overflow-hidden max-h-80 overflow-y-auto z-50"
               >
-                <span className="font-medium">{result.display_name}</span>
-                <span className="text-sm text-gray-500">
-                  {result.works_count} 篇论文
-                </span>
-              </button>
-            ))}
-          </div>
-        )}
+                {searchResults.map((result) => (
+                  <button
+                    key={result.id}
+                    onClick={() => selectAuthor(result.id)}
+                    className="w-full px-4 py-3 text-left hover:bg-accent/50 flex justify-between items-center transition-colors border-b border-border/50 last:border-0"
+                  >
+                    <div>
+                      <div className="font-medium text-foreground">{result.display_name}</div>
+                      <div className="text-xs text-muted-foreground truncate max-w-[200px]">
+                        {result.primary_institution_name || '未知机构'}
+                      </div>
+                    </div>
+                    <span className="text-xs bg-secondary px-2 py-1 rounded text-secondary-foreground">
+                      {result.works_count} 篇
+                    </span>
+                  </button>
+                ))}
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
       </div>
 
-      {/* Current Author Info */}
-      {author && (
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <span className="text-blue-700 font-medium">当前查看: </span>
-              <span className="text-blue-900 font-bold">{author.display_name}</span>
-              <span className="text-blue-600 ml-2">
-                ({collaborators.length} 位合作者)
-              </span>
+      <div className="flex-1 grid grid-cols-1 lg:grid-cols-4 gap-6 min-h-0">
+        {/* Main Graph Area */}
+        <div className="lg:col-span-3 flex flex-col bg-card rounded-xl border border-border shadow-sm overflow-hidden relative">
+           {loading ? (
+            <div className="absolute inset-0 flex items-center justify-center bg-background/80 z-10 backdrop-blur-sm">
+              <div className="text-center">
+                <Loader2 className="h-12 w-12 animate-spin text-primary mb-4 mx-auto" />
+                <p className="text-muted-foreground font-medium">正在构建引力场网络...</p>
+              </div>
             </div>
-            <button
-              onClick={() => navigate(`/author/${author.id}`)}
-              className="text-sm text-blue-600 hover:underline"
-            >
-              查看详情 →
-            </button>
-          </div>
-        </div>
-      )}
+          ) : nodes.length > 0 ? (
+            <div className="flex-1 relative">
+              <NetworkGraph
+                nodes={nodes}
+                edges={edges}
+                centerNodeId={authorId}
+                onNodeClick={handleNodeClick}
+              />
 
-      {/* Network Graph */}
-      {loading ? (
-        <div className="flex items-center justify-center h-[500px] bg-white rounded-lg border">
-          <div className="text-center">
-            <div className="animate-spin text-4xl mb-4">⏳</div>
-            <p className="text-gray-600">正在加载网络数据...</p>
-          </div>
-        </div>
-      ) : nodes.length > 0 ? (
-        <NetworkGraph
-          nodes={nodes}
-          edges={edges}
-          centerNodeId={authorId}
-          onNodeClick={handleNodeClick}
-        />
-      ) : (
-        <div className="flex items-center justify-center h-[500px] bg-white rounded-lg border">
-          <div className="text-center text-gray-500">
-            <div className="text-4xl mb-4">🔍</div>
-            <p>请搜索并选择一位作者来查看其合作网络</p>
-          </div>
-        </div>
-      )}
+              {/* Overlay Info */}
+              <div className="absolute top-4 left-4 bg-background/90 backdrop-blur border border-border p-3 rounded-lg shadow-lg max-w-xs">
+                 <div className="text-sm font-semibold text-foreground flex items-center gap-2 mb-1">
+                   <User size={14} className="text-primary" />
+                   {author?.display_name}
+                 </div>
+                 <div className="text-xs text-muted-foreground">
+                   显示 Top {nodes.length - 1} 合作者
+                 </div>
+              </div>
 
-      {/* Collaborator List */}
-      {collaborators.length > 0 && (
-        <div className="bg-white rounded-lg border border-gray-200 p-4">
-          <h3 className="font-semibold text-gray-900 mb-3">
-            合作者列表 (按合作次数排序)
-          </h3>
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
-            {collaborators.slice(0, 20).map((collab, index) => (
-              <button
-                key={collab.id}
-                onClick={() => selectAuthor(collab.id)}
-                className="text-left px-3 py-2 rounded border border-gray-200 hover:bg-gray-50 text-sm"
-              >
-                <div className="flex items-center space-x-2">
-                  <span className="text-gray-400">{index + 1}.</span>
-                  <span className="font-medium truncate">{collab.display_name}</span>
+              {/* Legend */}
+              <div className="absolute bottom-4 right-4 bg-background/90 backdrop-blur border border-border p-3 rounded-lg shadow-lg text-xs space-y-2">
+                <div className="flex items-center gap-2">
+                  <span className="w-3 h-3 rounded-full bg-blue-500"></span>
+                  <span>中心节点</span>
                 </div>
-                <div className="text-xs text-gray-500 ml-5">
-                  {collab.collaboration_count} 次合作
+                <div className="flex items-center gap-2">
+                  <span className="w-3 h-3 rounded-full bg-blue-200 border border-blue-400"></span>
+                  <span>合作者 (大小代表频次)</span>
                 </div>
-              </button>
-            ))}
-          </div>
+                <div className="flex items-center gap-2">
+                  <span className="w-6 h-0.5 bg-gray-400"></span>
+                  <span>合作关系 (粗细代表强度)</span>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground p-8">
+              <div className="w-20 h-20 bg-secondary/50 rounded-full flex items-center justify-center mb-6">
+                <Network className="h-10 w-10 opacity-40" />
+              </div>
+              <h3 className="text-lg font-medium text-foreground mb-2">准备就绪</h3>
+              <p className="max-w-sm text-center">
+                请在右上角搜索框输入作者姓名，系统将为您生成可视化的学术合作网络图谱。
+              </p>
+            </div>
+          )}
         </div>
-      )}
 
-      {/* Legend */}
-      <div className="bg-gray-50 rounded-lg p-4 text-sm text-gray-600">
-        <div className="font-medium mb-2">图例说明:</div>
-        <div className="flex flex-wrap gap-4">
-          <div className="flex items-center space-x-2">
-            <span className="w-4 h-4 rounded-full bg-blue-500"></span>
-            <span>中心作者</span>
-          </div>
-          <div className="flex items-center space-x-2">
-            <span className="w-4 h-4 rounded-full bg-blue-300"></span>
-            <span>合作者</span>
-          </div>
-          <div className="flex items-center space-x-2">
-            <span className="w-8 h-0.5 bg-gray-400"></span>
-            <span>合作关系 (线越粗合作越多)</span>
-          </div>
+        {/* Sidebar Info */}
+        <div className="lg:col-span-1 flex flex-col gap-4 overflow-hidden">
+          {collaborators.length > 0 ? (
+            <div className="bg-card rounded-xl border border-border shadow-sm flex flex-col h-full overflow-hidden">
+              <div className="p-4 border-b border-border bg-muted/30">
+                <h3 className="font-semibold text-foreground flex items-center gap-2">
+                  <Users size={16} />
+                  合作列表
+                </h3>
+              </div>
+              <div className="flex-1 overflow-y-auto p-2 space-y-1 scrollbar-thin">
+                {collaborators.slice(0, 50).map((collab, index) => (
+                  <button
+                    key={collab.id}
+                    onClick={() => selectAuthor(collab.id)}
+                    className="w-full text-left px-3 py-2 rounded-lg hover:bg-accent/50 text-sm flex items-center justify-between group transition-colors"
+                  >
+                    <div className="flex items-center gap-3 overflow-hidden">
+                      <span className="text-xs font-mono text-muted-foreground w-4">{index + 1}</span>
+                      <span className="font-medium truncate text-foreground group-hover:text-primary transition-colors">
+                        {collab.display_name}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-1 text-xs text-muted-foreground bg-secondary/50 px-1.5 py-0.5 rounded">
+                      {collab.collaboration_count}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <div className="bg-card rounded-xl border border-border shadow-sm p-6 text-center h-full flex flex-col items-center justify-center text-muted-foreground">
+               <Info size={32} className="mb-3 opacity-20" />
+               <p className="text-sm">暂无合作者列表</p>
+            </div>
+          )}
         </div>
       </div>
     </div>
