@@ -67,6 +67,22 @@ class Author(Base):
     )
 
 
+class InstitutionStats(Base):
+    """Precomputed institution statistics for fast listing."""
+
+    __tablename__ = "institution_stats"
+
+    institution_id = Column(String(50), primary_key=True)
+    institution_name = Column(String(500), nullable=True)
+    author_count = Column(Integer, default=0)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    __table_args__ = (
+        Index("idx_inststats_count", "author_count"),
+        Index("idx_inststats_name", "institution_name"),
+    )
+
+
 class Work(Base):
     """Published work (paper) from OpenAlex."""
 

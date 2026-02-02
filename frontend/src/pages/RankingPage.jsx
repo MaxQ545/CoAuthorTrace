@@ -12,14 +12,20 @@ function RankingPage() {
   const { timeRange } = useTimeFilter();
   const [institutions, setInstitutions] = useState([]);
   const [ranking, setRanking] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [initialLoading, setInitialLoading] = useState(true);
+  const [rankingLoading, setRankingLoading] = useState(false);
+  const [institutionsLoading, setInstitutionsLoading] = useState(false);
+  const [institutionQuery, setInstitutionQuery] = useState('');
   const [error, setError] = useState(null);
 
   const selectedInstitutionId = searchParams.get('institution_id');
 
   useEffect(() => {
-    loadInstitutions();
-  }, []);
+    const handle = setTimeout(() => {
+      loadInstitutions(institutionQuery);
+    }, 300);
+    return () => clearTimeout(handle);
+  }, [institutionQuery]);
 
   useEffect(() => {
     if (selectedInstitutionId) {
@@ -29,9 +35,14 @@ function RankingPage() {
     }
   }, [selectedInstitutionId, timeRange.fromYear, timeRange.toYear]);
 
-  const loadInstitutions = async () => {
+  const loadInstitutions = async (query = '') => {
+    setInstitutionsLoading(true);
     try {
-      const data = await api.getInstitutions();
+      const data = await api.getInstitutions({
+        query: query || null,
+        limit: 300,
+        offset: 0,
+      });
       setInstitutions(data.institutions || []);
       // Auto-select first institution if none selected and list available
       if (!selectedInstitutionId && data.institutions?.length > 0) {
@@ -40,12 +51,13 @@ function RankingPage() {
     } catch (err) {
       console.error('Failed to load institutions:', err);
     } finally {
-      setLoading(false);
+      setInstitutionsLoading(false);
+      setInitialLoading(false);
     }
   };
 
   const loadRanking = async (institutionId) => {
-    setLoading(true);
+    setRankingLoading(true);
     setError(null);
 
     try {
@@ -57,7 +69,7 @@ function RankingPage() {
       console.error('Failed to load ranking:', err);
       setError('加载排名数据失败，请稍后重试');
     } finally {
-      setLoading(false);
+      setRankingLoading(false);
     }
   };
 
@@ -65,7 +77,7 @@ function RankingPage() {
     setSearchParams({ institution_id: institutionId });
   };
 
-  if (loading && !institutions.length) {
+  if (initialLoading && !institutions.length) {
     return (
       <div className="flex flex-col items-center justify-center h-[60vh] text-muted-foreground">
         <Loader2 className="h-10 w-10 animate-spin mb-4 text-primary" />
@@ -91,6 +103,18 @@ function RankingPage() {
             <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-4 px-2">
               合作机构 ({institutions.length})
             </h2>
+            <div className="px-2 mb-3">
+              <input
+                type="text"
+                value={institutionQuery}
+                onChange={(e) => setInstitutionQuery(e.target.value)}
+                placeholder="搜索机构..."
+                className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
+              />
+              {institutionsLoading && (
+                <div className="text-xs text-muted-foreground mt-2">正在更新机构列表...</div>
+              )}
+            </div>
             <div className="space-y-1 max-h-[calc(100vh-12rem)] overflow-y-auto pr-1 scrollbar-thin">
               {institutions.map((inst) => (
                 <button
@@ -122,7 +146,7 @@ function RankingPage() {
         {/* Ranking Table - Main Content */}
         <div className="lg:col-span-9">
           {selectedInstitutionId ? (
-            loading ? (
+            rankingLoading ? (
               <div className="flex flex-col items-center justify-center h-64 text-muted-foreground bg-card rounded-xl border border-border">
                 <Loader2 className="h-8 w-8 animate-spin mb-3 text-primary" />
                 <p>正在计算排名数据...</p>

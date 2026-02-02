@@ -54,21 +54,31 @@ class ApiClient {
     return this.request(`/authors/${authorId}/top-relations?${params}`);
   }
 
-  async getAuthorNetworkMetrics(authorId) {
-    return this.request(`/authors/${authorId}/network-metrics`);
+  async getAuthorNetworkMetrics(authorId, full = true) {
+    const params = new URLSearchParams();
+    if (full) params.append('full', 'true');
+    const suffix = params.toString() ? `?${params}` : '';
+    return this.request(`/authors/${authorId}/network-metrics${suffix}`);
   }
 
   // Institution endpoints
-  async getInstitutions() {
-    return this.request('/authors/institutions');
+  async getInstitutions({ query = null, limit = null, offset = 0, refresh = false } = {}) {
+    const params = new URLSearchParams();
+    if (query) params.append('q', query);
+    if (limit !== null && limit !== undefined) params.append('limit', limit);
+    if (offset) params.append('offset', offset);
+    if (refresh) params.append('refresh', 'true');
+    const suffix = params.toString() ? `?${params}` : '';
+    return this.request(`/authors/institutions${suffix}`);
   }
 
-  async getInstitutionRanking(institutionId = null, institutionName = null, limit = 50, offset = 0, fromYear = null, toYear = null) {
+  async getInstitutionRanking(institutionId = null, institutionName = null, limit = 50, offset = 0, fromYear = null, toYear = null, fast = true) {
     const params = new URLSearchParams({ limit, offset });
     if (institutionId) params.append('institution_id', institutionId);
     if (institutionName) params.append('institution_name', institutionName);
     if (fromYear) params.append('from_year', fromYear);
     if (toYear) params.append('to_year', toYear);
+    if (fast) params.append('fast', 'true');
     return this.request(`/authors/ranking/by-institution?${params}`);
   }
 

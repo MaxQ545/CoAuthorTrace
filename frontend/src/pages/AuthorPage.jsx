@@ -45,6 +45,7 @@ function AuthorPage() {
   const loadAuthorData = async () => {
     setLoading(true);
     setError(null);
+    setMetrics(null);
 
     try {
       const [authorData, collabData] = await Promise.all([
@@ -54,18 +55,15 @@ function AuthorPage() {
 
       setAuthor(authorData);
       setCollaborators(collabData.collaborators || []);
+      setLoading(false);
 
-      // Load metrics separately (may fail)
-      try {
-        const metricsData = await api.getAuthorNetworkMetrics(authorId);
-        setMetrics(metricsData.metrics);
-      } catch (e) {
-        console.warn('Failed to load metrics:', e);
-      }
+      // Load metrics asynchronously (don't block page render)
+      api.getAuthorNetworkMetrics(authorId, true)
+        .then((metricsData) => setMetrics(metricsData.metrics))
+        .catch((e) => console.warn('Failed to load metrics:', e));
     } catch (error) {
       console.error('Failed to load author:', error);
       setError('无法加载作者信息');
-    } finally {
       setLoading(false);
     }
   };

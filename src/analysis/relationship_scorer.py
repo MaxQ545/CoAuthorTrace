@@ -8,6 +8,7 @@ from typing import Optional
 import numpy as np
 import torch
 import networkx as nx
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from config.settings import settings
@@ -462,9 +463,73 @@ class RelationshipScorer:
 
         return G
 
+    def _compute_fast_centrality_metrics(
+        self,
+        author: Author,
+    ) -> dict:
+        """Fast centrality metrics computed via SQL without graph materialization."""
+        institution_id = author.last_known_institution_id
+        institution_name = author.last_known_institution_name
+
+        metrics = {
+            "institution_name": institution_name,
+            "institution_author_count": 0,
+        }
+
+        if institution_id:
+            institution_count = (
+                self.session.query(func.count(Author.id))
+                .filter(
+                    Author.last_known_institution_id == institution_id,
+                    Author.is_canonical == True,
+                )
+                .scalar() or 0
+            )
+            metrics["institution_author_count"] = institution_count
+
+        # Get collaborators within institution scope when available
+        if institution_id:
+            neighbors_q1 = (
+                self.session.query(Collaboration.author_id_2.label("neighbor_id"))
+                .join(Author, Author.id == Collaboration.author_id_2)
+                .filter(
+                    Collaboration.author_id_1 == author.id,
+                    Author.last_known_institution_id == institution_id,
+                )
+            )
+            neighbors_q2 = (
+                self.session.query(Collaboration.author_id_1.label("neighbor_id"))
+                .join(Author, Author.id == Collaboration.author_id_1)
+                .filter(
+                    Collaboration.author_id_2 == author.id,
+                    Author.last_known_institution_id == institution_id,
+                )
+            )
+        else:
+            neighbors_q1 = (
+                self.session.query(Collaboration.author_id_2.label("neighbor_id"))
+                .filter(Collaboration.author_id_1 == author.id)
+            )
+            neighbors_q2 = (
+                self.session.query(Collaboration.author_id_1.label("neighbor_id"))
+                .filter(Collaboration.author_id_2 == author.id)
+            )
+
+        neighbor_count = (
+            self.session.query(func.count())
+            .select_from(neighbors_q1.union(neighbors_q2).subquery())
+            .scalar() or 0
+        )
+
+        if metrics["institution_author_count"] and metrics["institution_author_count"] > 1:
+            metrics["degree_centrality"] = neighbor_count / (metrics["institution_author_count"] - 1)
+
+        return metrics
+
     def compute_centrality_metrics(
         self,
         author_id: str,
+        full: bool = False,
     ) -> dict:
         """
         Compute network centrality metrics for an author within their institution.
@@ -477,9 +542,9 @@ class RelationshipScorer:
         Returns:
             Dictionary of centrality metrics including institution info
         """
-        # Check if we have precomputed metrics
-        if author_id in self._centrality_cache:
-            return self._centrality_cache[author_id]
+        cache_key = (author_id, "full" if full else "fast")
+        if cache_key in self._centrality_cache:
+            return self._centrality_cache[cache_key]
 
         # Get author's institution
         author = self.session.query(Author).filter(Author.id == author_id).first()
@@ -489,6 +554,11 @@ class RelationshipScorer:
         institution_id = author.last_known_institution_id
         institution_name = author.last_known_institution_name
 
+        if not full:
+            metrics = self._compute_fast_centrality_metrics(author)
+            self._centrality_cache[cache_key] = metrics
+            return metrics
+
         # Build institution graph if author has an institution
         if institution_id:
             G = self._build_institution_graph(institution_id, max_nodes=5000)
@@ -497,7 +567,9 @@ class RelationshipScorer:
             G = self._build_ego_graph(author_id, radius=2, max_neighbors=500)
 
         if author_id not in G or G.number_of_nodes() < 2:
-            return {"institution_name": institution_name, "institution_author_count": 0}
+            metrics = {"institution_name": institution_name, "institution_author_count": 0}
+            self._centrality_cache[cache_key] = metrics
+            return metrics
 
         metrics = {
             "institution_name": institution_name,
@@ -547,6 +619,7 @@ class RelationshipScorer:
         except Exception as e:
             logger.warning(f"Error computing centrality for {author_id}: {e}")
 
+        self._centrality_cache[cache_key] = metrics
         return metrics
 
 

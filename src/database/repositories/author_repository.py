@@ -4,7 +4,14 @@ from typing import Optional
 from sqlalchemy.orm import Session
 from sqlalchemy import or_, func, select
 
-from src.database.models import Author, Authorship, Collaboration, RelationshipScore, Work
+from src.database.models import (
+    Author,
+    Authorship,
+    Collaboration,
+    RelationshipScore,
+    Work,
+    InstitutionStats,
+)
 
 # Simple in-memory cache for search count (cleared on restart)
 _search_count_cache = {}
@@ -15,6 +22,57 @@ class AuthorRepository:
 
     def __init__(self, session: Session):
         self.session = session
+
+    def _build_works_count_subquery(
+        self,
+        from_year: Optional[int] = None,
+        to_year: Optional[int] = None,
+        author_ids_subquery=None,
+    ):
+        """Build a works count subquery with optional year filters."""
+        query = (
+            self.session.query(
+                Authorship.author_id,
+                func.count(func.distinct(Authorship.work_id)).label("works_count"),
+            )
+        )
+
+        if author_ids_subquery is not None:
+            query = query.filter(Authorship.author_id.in_(author_ids_subquery))
+
+        if from_year is not None or to_year is not None:
+            query = query.join(Work, Authorship.work_id == Work.id)
+            if from_year is not None:
+                query = query.filter(Work.publication_year >= from_year)
+            if to_year is not None:
+                query = query.filter(Work.publication_year <= to_year)
+
+        return query.group_by(Authorship.author_id).subquery()
+
+    def _build_cited_by_subquery(
+        self,
+        from_year: Optional[int] = None,
+        to_year: Optional[int] = None,
+        author_ids_subquery=None,
+    ):
+        """Build a cited_by_count subquery with optional year filters."""
+        query = (
+            self.session.query(
+                Authorship.author_id,
+                func.sum(Work.cited_by_count).label("cited_by_count"),
+            )
+            .join(Work, Authorship.work_id == Work.id)
+        )
+
+        if author_ids_subquery is not None:
+            query = query.filter(Authorship.author_id.in_(author_ids_subquery))
+
+        if from_year is not None:
+            query = query.filter(Work.publication_year >= from_year)
+        if to_year is not None:
+            query = query.filter(Work.publication_year <= to_year)
+
+        return query.group_by(Authorship.author_id).subquery()
 
     def get_by_id(self, author_id: str) -> Optional[Author]:
         """Get author by OpenAlex ID."""
@@ -27,33 +85,14 @@ class AuthorRepository:
         offset: int = 0,
         canonical_only: bool = True
     ) -> list[Author]:
-        """Search authors by name (case-insensitive exact match).
-
-        Args:
-            canonical_only: If True, only return deduplicated main records
-        """
-        # Build base filter - exact match (case-insensitive)
-        base_filter = func.lower(Author.display_name) == func.lower(query)
-        if canonical_only:
-            base_filter = base_filter & (Author.is_canonical == True)
-
-        # Get all matching authors
-        all_authors = self.session.query(Author).filter(base_filter).all()
-
-        # Calculate merged works count for each author and sort
-        authors_with_counts = []
-        for author in all_authors:
-            merged_count = self.get_merged_works_count(author.id)
-            authors_with_counts.append((author, merged_count))
-
-        # Sort by merged works count (descending)
-        authors_with_counts.sort(key=lambda x: x[1], reverse=True)
-
-        # Apply pagination
-        paginated = authors_with_counts[offset:offset + limit]
-        results = [author for author, _ in paginated]
-
-        return results
+        """Search authors by name (case-insensitive exact match)."""
+        results, _ = self.search_by_name_with_count(
+            query=query,
+            limit=limit,
+            offset=offset,
+            canonical_only=canonical_only,
+        )
+        return [author for author, _ in results]
 
     def search_by_name_with_count(
         self,
@@ -61,34 +100,49 @@ class AuthorRepository:
         limit: int = 20,
         offset: int = 0,
         canonical_only: bool = True
-    ) -> tuple[list[Author], int]:
-        """Search authors by name with total count (case-insensitive exact match).
-
-        Args:
-            canonical_only: If True, only return deduplicated main records
-        """
-        # Build base filter - exact match (case-insensitive)
-        base_filter = func.lower(Author.display_name) == func.lower(query)
+    ) -> tuple[list[tuple[Author, int]], int]:
+        """Search authors by name with total count (case-insensitive exact match)."""
+        # Build base filter - try case-sensitive exact match first (fast path)
+        base_filter = Author.display_name == query
         if canonical_only:
             base_filter = base_filter & (Author.is_canonical == True)
 
-        # Get all matching authors first (for sorting by merged works count)
-        all_authors = self.session.query(Author).filter(base_filter).all()
-        total = len(all_authors)
+        total = (
+            self.session.query(func.count(Author.id))
+            .filter(base_filter)
+            .scalar() or 0
+        )
 
-        # Calculate merged works count for each author and sort
-        authors_with_counts = []
-        for author in all_authors:
-            merged_count = self.get_merged_works_count(author.id)
-            authors_with_counts.append((author, merged_count))
+        # Fallback to case-insensitive match if no results
+        if total == 0:
+            base_filter = Author.display_name.collate("NOCASE") == query
+            if canonical_only:
+                base_filter = base_filter & (Author.is_canonical == True)
+            total = (
+                self.session.query(func.count(Author.id))
+                .filter(base_filter)
+                .scalar() or 0
+            )
 
-        # Sort by merged works count (descending)
-        authors_with_counts.sort(key=lambda x: x[1], reverse=True)
+        rows = (
+            self.session.query(Author)
+            .filter(base_filter)
+            .order_by(Author.works_count.desc())
+            .offset(offset)
+            .limit(limit)
+            .all()
+        )
 
-        # Apply pagination
-        paginated = authors_with_counts[offset:offset + limit]
-        results = [author for author, _ in paginated]
+        # Compute merged works count only for authors with aliases
+        results: list[tuple[Author, int]] = []
+        for author in rows:
+            merged_count = author.works_count or 0
+            if author.is_canonical and author.alias_ids:
+                merged_count = self.get_merged_works_count(author.id)
+            results.append((author, merged_count))
 
+        # Re-sort within the page to reflect merged counts
+        results.sort(key=lambda x: x[1], reverse=True)
         return results, total
 
     def get_or_create(
@@ -425,7 +479,8 @@ class AuthorRepository:
         limit: int = 50,
         offset: int = 0,
         from_year: Optional[int] = None,
-        to_year: Optional[int] = None
+        to_year: Optional[int] = None,
+        fast: bool = True,
     ) -> tuple[list[tuple], int]:
         """Get top authors by works count for an institution.
 
@@ -440,8 +495,6 @@ class AuthorRepository:
         Returns:
             Tuple of (list of (author, works_count, cited_by_count), total_count)
         """
-        import json
-
         if institution_name:
             return self._get_top_authors_by_affiliation(
                 institution_name=institution_name,
@@ -455,85 +508,111 @@ class AuthorRepository:
         if not institution_id:
             raise ValueError("Either institution_id or institution_name must be provided")
 
-        # Build base query for canonical authors only
-        base_query = (
-            self.session.query(Author)
-            .filter(Author.is_canonical == True)
-            .filter(Author.last_known_institution_id == institution_id)
-        )
+        # Fast path: use cached counts on Author table (no year filters)
+        if fast and from_year is None and to_year is None:
+            base_filter = (
+                (Author.is_canonical == True)
+                & (Author.last_known_institution_id == institution_id)
+            )
+            total = (
+                self.session.query(func.count(Author.id))
+                .filter(base_filter)
+                .scalar() or 0
+            )
 
-        # Get total count
-        total = base_query.count()
+            rows = (
+                self.session.query(Author)
+                .filter(base_filter)
+                .order_by(Author.works_count.desc())
+                .offset(offset)
+                .limit(limit)
+                .all()
+            )
 
-        # If year filter is specified, we need to count works dynamically
-        if from_year is not None or to_year is not None:
-            # Get all authors for this institution
-            authors = base_query.all()
-
-            # Calculate works count and cited_by_count for each author within year range
             results = []
-            for author in authors:
-                works_count = self._get_merged_works_count_by_year(
-                    author.id, from_year, to_year
-                )
-                if works_count > 0:  # Only include authors with works in range
-                    cited_by_count = self._get_merged_cited_by_count_by_year(
-                        author.id, from_year, to_year
-                    )
-                    results.append((author, works_count, cited_by_count))
+            for author in rows:
+                works_count = author.works_count or 0
+                cited_by_count = author.cited_by_count or 0
+                if author.alias_ids:
+                    works_count = self.get_merged_works_count(author.id)
+                    cited_by_count = self._get_merged_cited_by_count_by_year(author.id)
+                results.append((author, works_count, cited_by_count))
 
-            # Sort by works count
             results.sort(key=lambda x: x[1], reverse=True)
+            return results, total
 
-            # Apply pagination
-            return results[offset:offset + limit], len(results)
-
-        # Calculate works count dynamically using SQL for better accuracy
-        # The Author.works_count field may not be populated correctly
-        works_subquery = (
-            self.session.query(
-                Authorship.author_id,
-                func.count(func.distinct(Authorship.work_id)).label('works_count')
-            )
-            .group_by(Authorship.author_id)
-            .subquery()
+        # Build base filter for canonical authors only
+        base_filter = (
+            (Author.is_canonical == True)
+            & (Author.last_known_institution_id == institution_id)
         )
 
-        # Query authors with their actual works count
+        author_ids_subquery = select(Author.id).where(base_filter)
+
+        works_subquery = self._build_works_count_subquery(
+            from_year, to_year, author_ids_subquery
+        )
+        cited_subquery = self._build_cited_by_subquery(
+            from_year, to_year, author_ids_subquery
+        )
+
+        works_col = func.coalesce(works_subquery.c.works_count, 0)
+        cited_col = func.coalesce(cited_subquery.c.cited_by_count, 0)
+
         query = (
-            self.session.query(Author, func.coalesce(works_subquery.c.works_count, 0))
+            self.session.query(Author, works_col, cited_col)
             .outerjoin(works_subquery, Author.id == works_subquery.c.author_id)
-            .filter(Author.is_canonical == True)
+            .outerjoin(cited_subquery, Author.id == cited_subquery.c.author_id)
+            .filter(base_filter)
         )
 
-        if institution_id:
-            query = query.filter(Author.last_known_institution_id == institution_id)
-        elif institution_name:
-            query = query.filter(
-                Author.last_known_institution_name.ilike(f"%{institution_name}%")
+        # For year-filtered requests, only include authors with works in range
+        if from_year is not None or to_year is not None:
+            query = query.filter(works_subquery.c.works_count.isnot(None))
+
+        # Total count (fast, accurate for both modes)
+        if from_year is not None or to_year is not None:
+            total = (
+                self.session.query(func.count(Author.id))
+                .join(works_subquery, Author.id == works_subquery.c.author_id)
+                .filter(base_filter)
+                .scalar() or 0
+            )
+        else:
+            total = (
+                self.session.query(func.count(Author.id))
+                .filter(base_filter)
+                .scalar() or 0
             )
 
-        # Order by actual works count and apply pagination
-        query = (
+        rows = (
             query
-            .order_by(func.coalesce(works_subquery.c.works_count, 0).desc())
+            .order_by(works_col.desc())
             .offset(offset)
             .limit(limit)
+            .all()
         )
 
-        authors_with_counts = query.all()
-
-        # Calculate cited_by_count for each author
+        # Calculate merged counts only when aliases exist
         results = []
-        for author, works_count in authors_with_counts:
-            # Get merged works count (including aliases)
-            merged_count = self.get_merged_works_count(author.id)
-            cited_by_count = self._get_merged_cited_by_count_by_year(author.id)
-            results.append((author, merged_count, cited_by_count))
+        for author, works_count, cited_by_count in rows:
+            merged_count = works_count
+            merged_cited = cited_by_count
+            if author.alias_ids:
+                if from_year is not None or to_year is not None:
+                    merged_count = self._get_merged_works_count_by_year(
+                        author.id, from_year, to_year
+                    )
+                    merged_cited = self._get_merged_cited_by_count_by_year(
+                        author.id, from_year, to_year
+                    )
+                else:
+                    merged_count = self.get_merged_works_count(author.id)
+                    merged_cited = self._get_merged_cited_by_count_by_year(author.id)
+            results.append((author, merged_count, merged_cited))
 
-        # Re-sort by merged count (in case merging changes the order)
+        # Re-sort by merged count to keep ordering stable when aliases exist
         results.sort(key=lambda x: x[1], reverse=True)
-
         return results, total
 
     def _get_top_authors_by_affiliation(
@@ -688,26 +767,101 @@ class AuthorRepository:
 
         return query.scalar() or 0
 
-    def get_institutions(self) -> list[dict]:
+    def get_institutions(
+        self,
+        limit: Optional[int] = None,
+        offset: int = 0,
+        query: Optional[str] = None,
+        use_cache: bool = True,
+    ) -> tuple[list[dict], int]:
         """Get list of all institutions with author counts."""
-        results = (
+        if use_cache:
+            stats_query = self.session.query(InstitutionStats)
+            if query:
+                stats_query = stats_query.filter(
+                    InstitutionStats.institution_name.ilike(f"%{query}%")
+                )
+            total = stats_query.count()
+            stats_query = stats_query.order_by(InstitutionStats.author_count.desc())
+            if limit is not None:
+                stats_query = stats_query.offset(offset).limit(limit)
+            stats = stats_query.all()
+            if stats:
+                return (
+                    [
+                        {
+                            "id": s.institution_id,
+                            "name": s.institution_name,
+                            "author_count": s.author_count,
+                        }
+                        for s in stats
+                    ],
+                    total,
+                )
+
+        # Fallback to live aggregation (slower)
+        query_builder = (
             self.session.query(
                 Author.last_known_institution_id,
-                Author.last_known_institution_name,
-                func.count(Author.id).label('author_count')
+                func.max(Author.last_known_institution_name).label("institution_name"),
+                func.count(Author.id).label("author_count"),
             )
             .filter(Author.is_canonical == True)
             .filter(Author.last_known_institution_id.isnot(None))
-            .group_by(Author.last_known_institution_id, Author.last_known_institution_name)
+        )
+
+        if query:
+            query_builder = query_builder.filter(
+                Author.last_known_institution_name.ilike(f"%{query}%")
+            )
+
+        results = (
+            query_builder
+            .group_by(Author.last_known_institution_id)
             .order_by(func.count(Author.id).desc())
             .all()
         )
 
-        return [
-            {
-                "id": r[0],
-                "name": r[1],
-                "author_count": r[2]
-            }
-            for r in results
+        total = len(results)
+        if limit is not None:
+            results = results[offset:offset + limit]
+
+        return (
+            [
+                {
+                    "id": r[0],
+                    "name": r[1],
+                    "author_count": r[2],
+                }
+                for r in results
+            ],
+            total,
+        )
+
+    def refresh_institution_stats(self) -> int:
+        """Rebuild institution stats table. Returns number of institutions."""
+        rows = (
+            self.session.query(
+                Author.last_known_institution_id,
+                func.max(Author.last_known_institution_name).label("institution_name"),
+                func.count(Author.id).label("author_count"),
+            )
+            .filter(Author.is_canonical == True)
+            .filter(Author.last_known_institution_id.isnot(None))
+            .group_by(Author.last_known_institution_id)
+            .all()
+        )
+
+        self.session.query(InstitutionStats).delete()
+        stats = [
+            InstitutionStats(
+                institution_id=inst_id,
+                institution_name=inst_name,
+                author_count=author_count,
+            )
+            for inst_id, inst_name, author_count in rows
         ]
+        if stats:
+            self.session.bulk_save_objects(stats)
+        self.session.commit()
+        return len(stats)

@@ -256,12 +256,13 @@ async def search_authors(
     """
     repo = AuthorRepository(db)
     canonical_only = not include_aliases
-    authors, total = repo.search_by_name_with_count(q, limit=limit, offset=offset, canonical_only=canonical_only)
+    authors_with_counts, total = repo.search_by_name_with_count(
+        q, limit=limit, offset=offset, canonical_only=canonical_only
+    )
 
     # Build responses with merged works count
     results = []
-    for author in authors:
-        works_count = repo.get_merged_works_count(author.id) if author.is_canonical else author.works_count
+    for author, works_count in authors_with_counts:
 
         # Optionally include all IDs info
         all_ids_info = None
@@ -295,6 +296,10 @@ async def search_authors(
 
 @router.get("/institutions", response_model=InstitutionsResponse)
 async def list_institutions(
+    q: Optional[str] = Query(None, description="Institution name keyword"),
+    limit: Optional[int] = Query(None, ge=1, le=5000, description="Maximum results"),
+    offset: int = Query(0, ge=0, description="Result offset"),
+    refresh: bool = Query(False, description="Refresh cached institution stats"),
     db: Session = Depends(get_db),
 ):
     """
@@ -303,11 +308,18 @@ async def list_institutions(
     Returns institutions sorted by number of authors (descending).
     """
     repo = AuthorRepository(db)
-    institutions = repo.get_institutions()
+    if refresh:
+        repo.refresh_institution_stats()
+    institutions, total = repo.get_institutions(
+        limit=limit,
+        offset=offset,
+        query=q,
+        use_cache=True,
+    )
 
     return InstitutionsResponse(
         institutions=[InstitutionInfo(**inst) for inst in institutions],
-        total=len(institutions),
+        total=total,
     )
 
 
@@ -319,6 +331,7 @@ async def get_institution_ranking(
     offset: int = Query(0, ge=0, description="Result offset"),
     from_year: Optional[int] = Query(None, ge=1900, le=2100, description="起始年份（包含）"),
     to_year: Optional[int] = Query(None, ge=1900, le=2100, description="结束年份（包含）"),
+    fast: bool = Query(True, description="Use cached counts for faster ranking"),
     db: Session = Depends(get_db),
 ):
     """
@@ -348,6 +361,7 @@ async def get_institution_ranking(
             offset=offset,
             from_year=from_year,
             to_year=to_year,
+            fast=fast,
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -522,6 +536,7 @@ async def get_top_relations(
 @router.get("/{author_id}/network-metrics", response_model=NetworkMetricsResponse)
 async def get_network_metrics(
     author_id: str,
+    full: bool = Query(True, description="Compute full graph metrics (slower)"),
     db: Session = Depends(get_db),
 ):
     """
@@ -539,7 +554,7 @@ async def get_network_metrics(
     """
     # Check cache
     cache = get_cache()
-    cache_k = cache_key("network_metrics", author_id)
+    cache_k = cache_key("network_metrics", author_id, "full" if full else "fast")
 
     if cache:
         cached = cache.get(cache_k)
@@ -555,7 +570,7 @@ async def get_network_metrics(
 
     # Compute metrics
     scorer = RelationshipScorer(session=db)
-    metrics = scorer.compute_centrality_metrics(author_id)
+    metrics = scorer.compute_centrality_metrics(author_id, full=full)
 
     response = NetworkMetricsResponse(
         author_id=author_id,
