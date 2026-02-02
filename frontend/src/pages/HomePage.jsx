@@ -39,14 +39,6 @@ function HomePage() {
     navigate(`/authors/search?q=${encodeURIComponent(query)}`);
   };
 
-  const quickActions = [
-    { label: '张 (Zhang)', query: 'Zhang' },
-    { label: '王 (Wang)', query: 'Wang' },
-    { label: '李 (Li)', query: 'Li' },
-    { label: '刘 (Liu)', query: 'Liu' },
-    { label: '陈 (Chen)', query: 'Chen' },
-  ];
-
   return (
     <div className="space-y-16 pb-12">
       {/* Hero Section */}
@@ -83,18 +75,6 @@ function HomePage() {
             <SearchBox onSearch={handleSearch} placeholder="输入作者姓名，探索学术网络..." />
           </div>
 
-          <div className="pt-4 flex items-center justify-center gap-3 text-sm text-muted-foreground flex-wrap">
-            <span className="font-medium">热门搜索:</span>
-            {quickActions.map((action) => (
-              <button
-                key={action.query}
-                onClick={() => handleSearch(action.query)}
-                className="px-3 py-1 rounded-full bg-secondary/50 hover:bg-secondary border border-transparent hover:border-border transition-all duration-200 text-secondary-foreground"
-              >
-                {action.label}
-              </button>
-            ))}
-          </div>
         </motion.div>
       </section>
 
