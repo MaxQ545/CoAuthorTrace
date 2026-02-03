@@ -264,6 +264,9 @@ async def search_authors(
     results = []
     for author, works_count in authors_with_counts:
 
+        # Compute merged cited_by_count
+        cited_by_count = repo._get_merged_cited_by_count_by_year(author.id)
+
         # Optionally include all IDs info
         all_ids_info = None
         if include_all_ids and author.is_canonical:
@@ -282,6 +285,7 @@ async def search_authors(
         results.append(AuthorResponse.from_author(
             author,
             works_count=works_count,
+            cited_by_count=cited_by_count,
             all_ids_info=all_ids_info,
             research_fields=research_fields_models
         ))

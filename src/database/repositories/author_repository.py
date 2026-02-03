@@ -133,12 +133,15 @@ class AuthorRepository:
             .all()
         )
 
-        # Compute merged works count only for authors with aliases
+        # Compute merged works count for all canonical authors
         results: list[tuple[Author, int]] = []
         for author in rows:
-            merged_count = author.works_count or 0
-            if author.is_canonical and author.alias_ids:
+            if author.is_canonical:
+                # Always compute actual count from authorships table
                 merged_count = self.get_merged_works_count(author.id)
+            else:
+                # For non-canonical (alias) authors, use cached count
+                merged_count = author.works_count or 0
             results.append((author, merged_count))
 
         # Re-sort within the page to reflect merged counts
