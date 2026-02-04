@@ -615,17 +615,25 @@ async def get_collaborators(
         author_id, limit=limit, from_year=from_year, to_year=to_year
     )
 
+    # Compute primary institution for each collaborator
+    collaborators_with_institution = []
+    for collab, count in collaborators:
+        institution_freqs = repo.get_institution_frequencies(collab.id, limit=1)
+        primary_institution_name = (
+            institution_freqs[0]["name"] if institution_freqs else collab.last_known_institution_name
+        )
+        collaborators_with_institution.append({
+            "id": collab.id,
+            "display_name": collab.display_name,
+            "collaboration_count": count,
+            "primary_institution_name": primary_institution_name,
+            "last_known_institution_name": collab.last_known_institution_name,
+        })
+
     return {
         "author_id": author_id,
         "author_name": author.display_name,
-        "collaborators": [
-            {
-                "id": collab.id,
-                "display_name": collab.display_name,
-                "collaboration_count": count,
-            }
-            for collab, count in collaborators
-        ],
+        "collaborators": collaborators_with_institution,
     }
 
 

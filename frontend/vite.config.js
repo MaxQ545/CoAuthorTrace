@@ -1,14 +1,18 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
+const serverHost = process.env.COAUTHOR_FRONTEND_HOST || '0.0.0.0'
+const serverPort = Number(process.env.COAUTHOR_FRONTEND_PORT) || 3000
+const apiTarget = process.env.COAUTHOR_API_URL || 'http://localhost:8000'
+
 export default defineConfig({
   plugins: [react()],
   server: {
-    host: '0.0.0.0',  // Listen on all interfaces (IPv4 + IPv6)
-    port: 3000,
+    host: serverHost,  // Listen on all interfaces (IPv4 + IPv6)
+    port: serverPort,
     proxy: {
       '/api': {
-        target: 'http://localhost:8000',
+        target: apiTarget,
         changeOrigin: true,
       }
     }
