@@ -28,12 +28,13 @@ class ApiClient {
   }
 
   // Author endpoints
-  async searchAuthors(query, limit = 20, offset = 0, includeAllIds = true) {
+  async searchAuthors(query, limit = 20, offset = 0, includeAllIds = true, fuzzy = false) {
     const params = new URLSearchParams({
       q: query,
       limit,
       offset,
-      include_all_ids: includeAllIds
+      include_all_ids: includeAllIds,
+      fuzzy
     });
     return this.request(`/authors/search?${params}`);
   }

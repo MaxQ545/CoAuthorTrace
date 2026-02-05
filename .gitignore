@@ -68,6 +68,9 @@ docs/_build/
 .DS_Store
 Thumbs.db
 
+# Git worktrees
+.worktrees/
+
 # Node.js
 node_modules/
 **/node_modules/
