@@ -22,6 +22,47 @@ class CollaborationRepository:
     def __init__(self, session: Session):
         self.session = session
 
+    def _resolve_canonical_author(self, author_id: str) -> Optional[Author]:
+        """Resolve author_id to its canonical author record if available."""
+        import json
+
+        author = self.session.query(Author).filter(Author.id == author_id).first()
+        if not author:
+            return None
+
+        if author.is_canonical:
+            return author
+
+        canonical = None
+        # Prefilter with LIKE; exact membership validated after JSON parsing.
+        escaped_id = (
+            author_id.replace("\\", "\\\\")
+            .replace("%", "\\%")
+            .replace("_", "\\_")
+        )
+        pattern = f"%\"{escaped_id}\"%"
+        candidates = (
+            self.session.query(Author)
+            .filter(Author.is_canonical)
+            .filter(Author.alias_ids.isnot(None))
+            .filter(Author.alias_ids.like(pattern, escape="\\"))
+            .all()
+        )
+        for candidate in candidates:
+            try:
+                alias_list = json.loads(candidate.alias_ids)
+            except (json.JSONDecodeError, TypeError) as exc:
+                logger.warning(
+                    "Invalid alias_ids JSON for canonical author %s",
+                    candidate.id,
+                    exc_info=exc,
+                )
+                continue
+            if author_id in alias_list:
+                canonical = candidate
+                break
+        return canonical or author
+
     def get_collaboration(
         self,
         author_id_1: str,
@@ -272,41 +313,9 @@ class CollaborationRepository:
         # Get all related IDs for both authors (including alias_ids)
         def get_all_author_ids(author_id: str) -> list[str]:
             """Get author and all alias IDs."""
-            author = self.session.query(Author).filter(Author.id == author_id).first()
+            author = self._resolve_canonical_author(author_id)
             if not author:
                 return [author_id]
-
-            if not author.is_canonical:
-                canonical = None
-                # Prefilter with LIKE; exact membership validated after JSON parsing.
-                escaped_id = (
-                    author_id.replace("\\", "\\\\")
-                    .replace("%", "\\%")
-                    .replace("_", "\\_")
-                )
-                pattern = f"%\"{escaped_id}\"%"
-                candidates = (
-                    self.session.query(Author)
-                    .filter(Author.is_canonical)
-                    .filter(Author.alias_ids.isnot(None))
-                    .filter(Author.alias_ids.like(pattern, escape="\\"))
-                    .all()
-                )
-                for candidate in candidates:
-                    try:
-                        alias_list = json.loads(candidate.alias_ids)
-                    except (json.JSONDecodeError, TypeError) as exc:
-                        logger.warning(
-                            "Invalid alias_ids JSON for canonical author %s",
-                            candidate.id,
-                            exc_info=exc,
-                        )
-                        continue
-                    if author_id in alias_list:
-                        canonical = candidate
-                        break
-                if canonical:
-                    author = canonical
 
             ids = [author.id]
             seen = set(ids)
