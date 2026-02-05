@@ -19,7 +19,7 @@ def db_session():
     original_engine = models._engine
     original_session = models._SessionLocal
 
-    # settings.sqlite_path expects a Path; get_engine converts ":memory:" sentinel to string.
+    # settings.database.sqlite_path expects a Path; get_engine converts ":memory:" sentinel to string.
     settings.database.sqlite_path = Path(":memory:")
     models._engine = None
     models._SessionLocal = None

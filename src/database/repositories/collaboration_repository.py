@@ -269,9 +269,9 @@ class CollaborationRepository:
         """
         import json
 
-        # 获取两位作者的所有相关 ID (包括 alias_ids)
+        # Get all related IDs for both authors (including alias_ids)
         def get_all_author_ids(author_id: str) -> list[str]:
-            """获取作者及其所有别名 ID"""
+            """Get author and all alias IDs."""
             author = self.session.query(Author).filter(Author.id == author_id).first()
             if not author:
                 return [author_id]
@@ -302,15 +302,8 @@ class CollaborationRepository:
                 if canonical:
                     author = canonical
 
-            ids = []
-            seen = set()
-
-            def add_id(value: str):
-                if value not in seen:
-                    seen.add(value)
-                    ids.append(value)
-
-            add_id(author.id)
+            ids = [author.id]
+            seen = {author.id}
             if author.alias_ids:
                 try:
                     alias_list = json.loads(author.alias_ids)
@@ -321,10 +314,13 @@ class CollaborationRepository:
                     )
                     alias_list = []
                 for alias_id in alias_list:
-                    add_id(alias_id)
+                    if alias_id not in seen:
+                        seen.add(alias_id)
+                        ids.append(alias_id)
 
-            if author_id != author.id:
-                add_id(author_id)
+            if author_id != author.id and author_id not in seen:
+                seen.add(author_id)
+                ids.append(author_id)
             return ids
 
         author_ids_1 = get_all_author_ids(author_id_1)
