@@ -311,7 +311,8 @@ class CollaborationRepository:
                 for alias_id in alias_list:
                     add_id(alias_id)
 
-            add_id(author_id)
+            if author_id != author.id:
+                add_id(author_id)
             return ids
 
         author_ids_1 = get_all_author_ids(author_id_1)

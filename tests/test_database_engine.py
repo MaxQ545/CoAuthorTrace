@@ -73,4 +73,14 @@ def test_co_authored_works_resolves_aliases(db_session):
     works, total = repo.get_co_authored_works("A1_alias", "A2")
 
     assert total == 2
-    assert {work.id for work in works} == {"W1", "W2"}
+    work_ids = {work.id for work in works}
+    assert work_ids == {"W1", "W2"}
+
+    authorship_ids = {
+        authorship.author_id
+        for authorship in db_session.query(Authorship)
+        .filter(Authorship.work_id.in_(work_ids))
+        .all()
+    }
+    assert "A1" in authorship_ids
+    assert "A1_alias" in authorship_ids
