@@ -279,21 +279,27 @@ class CollaborationRepository:
             if not author.is_canonical:
                 canonical = None
                 # Prefilter with LIKE; exact membership validated after JSON parsing.
-                pattern = f"%\"{author_id}\"%"
+                escaped_id = (
+                    author_id.replace("\\", "\\\\")
+                    .replace("%", "\\%")
+                    .replace("_", "\\_")
+                )
+                pattern = f"%\"{escaped_id}\"%"
                 candidates = (
                     self.session.query(Author)
                     .filter(Author.is_canonical)
                     .filter(Author.alias_ids.isnot(None))
-                    .filter(Author.alias_ids.like(pattern))
+                    .filter(Author.alias_ids.like(pattern, escape="\\"))
                     .all()
                 )
                 for candidate in candidates:
                     try:
                         alias_list = json.loads(candidate.alias_ids)
-                    except (json.JSONDecodeError, TypeError):
+                    except (json.JSONDecodeError, TypeError) as exc:
                         logger.warning(
                             "Invalid alias_ids JSON for canonical author %s",
                             candidate.id,
+                            exc_info=exc,
                         )
                         continue
                     if author_id in alias_list:
@@ -303,14 +309,15 @@ class CollaborationRepository:
                     author = canonical
 
             ids = [author.id]
-            seen = {author.id}
+            seen = set(ids)
             if author.alias_ids:
                 try:
                     alias_list = json.loads(author.alias_ids)
-                except (json.JSONDecodeError, TypeError):
+                except (json.JSONDecodeError, TypeError) as exc:
                     logger.warning(
                         "Invalid alias_ids JSON for author %s",
                         author.id,
+                        exc_info=exc,
                     )
                     alias_list = []
                 for alias_id in alias_list:
