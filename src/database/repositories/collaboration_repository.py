@@ -287,13 +287,15 @@ class CollaborationRepository:
             if author.alias_ids:
                 try:
                     alias_list = json.loads(author.alias_ids)
-                    ids.extend(alias_list)
-                except Exception:
-                    pass
+                except (json.JSONDecodeError, TypeError):
+                    alias_list = []
+                for alias_id in alias_list:
+                    if alias_id not in ids:
+                        ids.append(alias_id)
 
             if author_id not in ids:
                 ids.append(author_id)
-            return list(dict.fromkeys(ids))
+            return ids
 
         author_ids_1 = get_all_author_ids(author_id_1)
         author_ids_2 = get_all_author_ids(author_id_2)
