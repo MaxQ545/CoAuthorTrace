@@ -83,14 +83,16 @@ class AuthorRepository:
         query: str,
         limit: int = 20,
         offset: int = 0,
-        canonical_only: bool = True
+        canonical_only: bool = True,
+        fuzzy: bool = False,
     ) -> list[Author]:
-        """Search authors by name (case-insensitive exact match)."""
+        """Search authors by name."""
         results, _ = self.search_by_name_with_count(
             query=query,
             limit=limit,
             offset=offset,
             canonical_only=canonical_only,
+            fuzzy=fuzzy,
         )
         return [author for author, _ in results]
 
@@ -99,30 +101,47 @@ class AuthorRepository:
         query: str,
         limit: int = 20,
         offset: int = 0,
-        canonical_only: bool = True
+        canonical_only: bool = True,
+        fuzzy: bool = False,
     ) -> tuple[list[tuple[Author, int]], int]:
-        """Search authors by name with total count (case-insensitive exact match)."""
-        # Build base filter - try case-sensitive exact match first (fast path)
-        base_filter = Author.display_name == query
-        if canonical_only:
-            base_filter = base_filter & (Author.is_canonical == True)
+        """Search authors by name with total count."""
+        base_filter = None
 
-        total = (
-            self.session.query(func.count(Author.id))
-            .filter(base_filter)
-            .scalar() or 0
-        )
-
-        # Fallback to case-insensitive match if no results
-        if total == 0:
-            base_filter = Author.display_name.collate("NOCASE") == query
+        if fuzzy:
+            # Fuzzy match (case-insensitive partial match)
+            # using ilike for generic SQL case-insensitive matching
+            base_filter = Author.display_name.ilike(f"%{query}%")
             if canonical_only:
                 base_filter = base_filter & (Author.is_canonical == True)
+
             total = (
                 self.session.query(func.count(Author.id))
                 .filter(base_filter)
                 .scalar() or 0
             )
+        else:
+            # Exact match (existing logic)
+            # Build base filter - try case-sensitive exact match first (fast path)
+            base_filter = Author.display_name == query
+            if canonical_only:
+                base_filter = base_filter & (Author.is_canonical == True)
+
+            total = (
+                self.session.query(func.count(Author.id))
+                .filter(base_filter)
+                .scalar() or 0
+            )
+
+            # Fallback to case-insensitive match if no results
+            if total == 0:
+                base_filter = Author.display_name.collate("NOCASE") == query
+                if canonical_only:
+                    base_filter = base_filter & (Author.is_canonical == True)
+                total = (
+                    self.session.query(func.count(Author.id))
+                    .filter(base_filter)
+                    .scalar() or 0
+                )
 
         rows = (
             self.session.query(Author)

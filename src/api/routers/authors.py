@@ -242,12 +242,16 @@ async def search_authors(
     offset: int = Query(0, ge=0, description="Result offset"),
     include_aliases: bool = Query(False, description="Include non-canonical (alias) records"),
     include_all_ids: bool = Query(False, description="Include detailed info for all merged IDs"),
+    fuzzy: bool = Query(False, description="Enable fuzzy matching (partial match)"),
     db: Session = Depends(get_db),
 ):
     """
     Search authors by name.
 
-    Performs case-insensitive partial matching on author display names.
+    Performs case-insensitive matching on author display names.
+    By default (fuzzy=False), performs exact match (case-insensitive fallback).
+    If fuzzy=True, performs partial match (LIKE %q%).
+
     Results are sorted by works count (descending).
 
     By default, only returns deduplicated (canonical) author records.
@@ -257,7 +261,7 @@ async def search_authors(
     repo = AuthorRepository(db)
     canonical_only = not include_aliases
     authors_with_counts, total = repo.search_by_name_with_count(
-        q, limit=limit, offset=offset, canonical_only=canonical_only
+        q, limit=limit, offset=offset, canonical_only=canonical_only, fuzzy=fuzzy
     )
 
     # Build responses with merged works count
