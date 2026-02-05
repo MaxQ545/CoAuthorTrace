@@ -40,6 +40,7 @@ def test_get_engine_in_memory(db_session):
     """Ensure in-memory database uses sqlite memory URL."""
     engine = models.get_engine()
     assert str(engine.url) == "sqlite:///:memory:"
+    assert db_session.query(Author).count() == 0
 
 
 def test_co_authored_works_resolves_aliases(db_session):
