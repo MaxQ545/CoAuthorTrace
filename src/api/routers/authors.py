@@ -669,18 +669,21 @@ async def get_co_authored_papers(
     collab_repo = CollaborationRepository(db)
 
     # 验证两位作者都存在
-    author = repo.get_by_id(author_id)
+    canonical_author_id = repo.get_canonical_id(author_id)
+    canonical_collaborator_id = repo.get_canonical_id(collaborator_id)
+
+    author = repo.get_by_id(canonical_author_id)
     if not author:
         raise HTTPException(status_code=404, detail="Author not found")
 
-    collaborator = repo.get_by_id(collaborator_id)
+    collaborator = repo.get_by_id(canonical_collaborator_id)
     if not collaborator:
         raise HTTPException(status_code=404, detail="Collaborator not found")
 
     # 获取共同合作的论文
     works, total = collab_repo.get_co_authored_works(
-        author_id_1=author_id,
-        author_id_2=collaborator_id,
+        author_id_1=canonical_author_id,
+        author_id_2=canonical_collaborator_id,
         limit=limit,
         offset=offset,
         sort_by=sort_by,
@@ -705,9 +708,9 @@ async def get_co_authored_papers(
     ]
 
     return CoAuthoredPapersResponse(
-        author_id=author_id,
+        author_id=canonical_author_id,
         author_name=author.display_name,
-        collaborator_id=collaborator_id,
+        collaborator_id=canonical_collaborator_id,
         collaborator_name=collaborator.display_name,
         papers=papers,
         total=total,

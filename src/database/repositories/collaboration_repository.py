@@ -273,14 +273,27 @@ class CollaborationRepository:
             if not author:
                 return [author_id]
 
-            ids = [author_id]
+            if not author.is_canonical:
+                canonical = (
+                    self.session.query(Author)
+                    .filter(Author.is_canonical == True)
+                    .filter(Author.alias_ids.contains(author_id))
+                    .first()
+                )
+                if canonical:
+                    author = canonical
+
+            ids = [author.id]
             if author.alias_ids:
                 try:
                     alias_list = json.loads(author.alias_ids)
                     ids.extend(alias_list)
-                except:
+                except Exception:
                     pass
-            return ids
+
+            if author_id not in ids:
+                ids.append(author_id)
+            return list(dict.fromkeys(ids))
 
         author_ids_1 = get_all_author_ids(author_id_1)
         author_ids_2 = get_all_author_ids(author_id_2)

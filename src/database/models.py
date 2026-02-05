@@ -2,6 +2,7 @@
 SQLAlchemy ORM models for Coauthor Tracing System.
 """
 from datetime import datetime
+from pathlib import Path
 from typing import Optional
 from contextlib import contextmanager
 
@@ -258,13 +259,24 @@ def get_engine():
     """Get or create the database engine."""
     global _engine
     if _engine is None:
-        db_path = settings.project_root / settings.database.sqlite_path
-        db_path.parent.mkdir(parents=True, exist_ok=True)
-        _engine = create_engine(
-            f"sqlite:///{db_path}",
-            echo=False,
-            connect_args={"check_same_thread": False}
-        )
+        raw_path = settings.database.sqlite_path
+        db_path_str = str(raw_path)
+        if db_path_str == ":memory:":
+            _engine = create_engine(
+                "sqlite:///:memory:",
+                echo=False,
+                connect_args={"check_same_thread": False},
+            )
+        else:
+            db_path = Path(db_path_str)
+            if not db_path.is_absolute():
+                db_path = settings.project_root / db_path
+            db_path.parent.mkdir(parents=True, exist_ok=True)
+            _engine = create_engine(
+                f"sqlite:///{db_path}",
+                echo=False,
+                connect_args={"check_same_thread": False},
+            )
     return _engine
 
 
