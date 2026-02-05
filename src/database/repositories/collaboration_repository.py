@@ -1,4 +1,5 @@
 """Repository for Collaboration operations."""
+import logging
 from datetime import datetime
 from typing import Optional
 from sqlalchemy.orm import Session
@@ -11,6 +12,8 @@ from src.database.models import (
     Work,
     Author,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class CollaborationRepository:
@@ -275,6 +278,7 @@ class CollaborationRepository:
 
             if not author.is_canonical:
                 canonical = None
+                # Prefilter with LIKE; exact membership validated after JSON parsing.
                 pattern = f"%\"{author_id}\"%"
                 candidates = (
                     self.session.query(Author)
@@ -287,6 +291,10 @@ class CollaborationRepository:
                     try:
                         alias_list = json.loads(candidate.alias_ids)
                     except (json.JSONDecodeError, TypeError):
+                        logger.warning(
+                            "Invalid alias_ids JSON for canonical author %s",
+                            candidate.id,
+                        )
                         continue
                     if author_id in alias_list:
                         canonical = candidate
@@ -307,6 +315,10 @@ class CollaborationRepository:
                 try:
                     alias_list = json.loads(author.alias_ids)
                 except (json.JSONDecodeError, TypeError):
+                    logger.warning(
+                        "Invalid alias_ids JSON for author %s",
+                        author.id,
+                    )
                     alias_list = []
                 for alias_id in alias_list:
                     add_id(alias_id)

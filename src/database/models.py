@@ -28,6 +28,8 @@ from sqlalchemy.orm import (
 
 from config.settings import settings
 
+MEMORY_SQLITE_PATH = ":memory:"
+
 
 class Base(DeclarativeBase):
     """Base class for all models."""
@@ -261,7 +263,7 @@ def get_engine():
     if _engine is None:
         raw_path = settings.database.sqlite_path
         db_path_str = str(raw_path)
-        if db_path_str == ":memory:":
+        if db_path_str == MEMORY_SQLITE_PATH:
             _engine = create_engine(
                 "sqlite:///:memory:",
                 echo=False,
