@@ -274,12 +274,21 @@ class CollaborationRepository:
                 return [author_id]
 
             if not author.is_canonical:
-                canonical = (
+                canonical = None
+                candidates = (
                     self.session.query(Author)
-                    .filter(Author.is_canonical == True)
-                    .filter(Author.alias_ids.contains(author_id))
-                    .first()
+                    .filter(Author.is_canonical)
+                    .filter(Author.alias_ids.isnot(None))
+                    .all()
                 )
+                for candidate in candidates:
+                    try:
+                        alias_list = json.loads(candidate.alias_ids)
+                    except (json.JSONDecodeError, TypeError):
+                        continue
+                    if author_id in alias_list:
+                        canonical = candidate
+                        break
                 if canonical:
                     author = canonical
 
