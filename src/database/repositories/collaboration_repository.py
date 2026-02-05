@@ -275,10 +275,12 @@ class CollaborationRepository:
 
             if not author.is_canonical:
                 canonical = None
+                pattern = f"%\"{author_id}\"%"
                 candidates = (
                     self.session.query(Author)
                     .filter(Author.is_canonical)
                     .filter(Author.alias_ids.isnot(None))
+                    .filter(Author.alias_ids.like(pattern))
                     .all()
                 )
                 for candidate in candidates:
@@ -292,18 +294,24 @@ class CollaborationRepository:
                 if canonical:
                     author = canonical
 
-            ids = [author.id]
+            ids = []
+            seen = set()
+
+            def add_id(value: str):
+                if value not in seen:
+                    seen.add(value)
+                    ids.append(value)
+
+            add_id(author.id)
             if author.alias_ids:
                 try:
                     alias_list = json.loads(author.alias_ids)
                 except (json.JSONDecodeError, TypeError):
                     alias_list = []
                 for alias_id in alias_list:
-                    if alias_id not in ids:
-                        ids.append(alias_id)
+                    add_id(alias_id)
 
-            if author_id not in ids:
-                ids.append(author_id)
+            add_id(author_id)
             return ids
 
         author_ids_1 = get_all_author_ids(author_id_1)
