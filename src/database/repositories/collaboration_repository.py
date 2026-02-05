@@ -279,7 +279,7 @@ class CollaborationRepository:
             if not author.is_canonical:
                 canonical = None
                 # Prefilter with LIKE; exact membership validated after JSON parsing.
-                pattern = f"%\"{author_id}\"%"
+                pattern = f"%{json.dumps(author_id)}%"
                 candidates = (
                     self.session.query(Author)
                     .filter(Author.is_canonical)
@@ -302,8 +302,8 @@ class CollaborationRepository:
                 if canonical:
                     author = canonical
 
-            ids = [author.id]
             seen = {author.id}
+            ids = list(seen)
             if author.alias_ids:
                 try:
                     alias_list = json.loads(author.alias_ids)
