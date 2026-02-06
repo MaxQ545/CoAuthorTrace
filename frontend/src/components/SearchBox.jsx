@@ -17,7 +17,7 @@ function SearchBox({ onSearch, placeholder = '搜索作者...', loading = false,
     setQuery(defaultValue);
   }, [defaultValue]);
 
-  // 实时搜索建议
+  // 防抖搜索建议
   useEffect(() => {
     const trimmedQuery = query.trim();
 
@@ -29,8 +29,8 @@ function SearchBox({ onSearch, placeholder = '搜索作者...', loading = false,
       return;
     }
 
-    // 300ms
-    const timeoutId = setTimeout(async () => { 
+    // 300ms 防抖
+    const timeoutId = setTimeout(async () => {
       setIsLoadingSuggestions(true);
       try {
         const response = await api.searchAuthors(trimmedQuery, 10, 0, false, true);
