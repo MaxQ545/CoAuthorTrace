@@ -42,7 +42,7 @@ function HomePage() {
   return (
     <div className="space-y-16 pb-12">
       {/* Hero Section */}
-      <section className="relative pt-12 pb-20 md:pt-20 md:pb-28 text-center px-4 overflow-hidden">
+      <section className="relative pt-12 pb-20 md:pt-20 md:pb-28 text-center px-4">
         {/* Background Decorative Elements */}
         <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full h-full max-w-5xl -z-10 opacity-30 dark:opacity-20 pointer-events-none">
           <div className="absolute top-[-10%] left-[10%] w-72 h-72 bg-blue-400/30 rounded-full blur-[100px] animate-pulse-slow" />

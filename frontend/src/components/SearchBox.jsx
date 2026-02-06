@@ -144,7 +144,7 @@ function SearchBox({ onSearch, placeholder = '搜索作者...', loading = false,
 
       {/* 下拉建议列表 */}
       {showSuggestions && (
-        <div className="absolute top-full left-0 right-0 mt-1 z-50 bg-background border border-border rounded-lg shadow-lg max-h-96 overflow-y-auto">
+        <div className="absolute top-full left-0 right-0 mt-2 z-50 bg-background border border-border rounded-lg shadow-lg max-h-96 overflow-y-auto text-left">
           {isLoadingSuggestions ? (
             <div className="px-4 py-3 text-muted-foreground text-sm">
               <span className="inline-block animate-spin mr-2">⏳</span>
