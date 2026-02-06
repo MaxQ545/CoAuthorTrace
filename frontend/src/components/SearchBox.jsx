@@ -17,7 +17,7 @@ function SearchBox({ onSearch, placeholder = '搜索作者...', loading = false,
     setQuery(defaultValue);
   }, [defaultValue]);
 
-  // 实时搜索建议（无延迟）
+  // 实时搜索建议
   useEffect(() => {
     const trimmedQuery = query.trim();
 
@@ -29,8 +29,8 @@ function SearchBox({ onSearch, placeholder = '搜索作者...', loading = false,
       return;
     }
 
-    // 立即触发搜索
-    const fetchSuggestions = async () => {
+    // 300ms
+    const timeoutId = setTimeout(async () => { 
       setIsLoadingSuggestions(true);
       try {
         const response = await api.searchAuthors(trimmedQuery, 10, 0, false, true);
@@ -44,9 +44,9 @@ function SearchBox({ onSearch, placeholder = '搜索作者...', loading = false,
       } finally {
         setIsLoadingSuggestions(false);
       }
-    };
+    }, 300);
 
-    fetchSuggestions();
+    return () => clearTimeout(timeoutId);
   }, [query]);
 
   // 点击外部关闭下拉列表
