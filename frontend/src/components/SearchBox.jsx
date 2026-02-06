@@ -21,8 +21,8 @@ function SearchBox({ onSearch, placeholder = '搜索作者...', loading = false,
   useEffect(() => {
     const trimmedQuery = query.trim();
 
-    // 输入长度 < 2 时隐藏建议
-    if (trimmedQuery.length < 2) {
+    // 输入长度 < 1 时隐藏建议
+    if (trimmedQuery.length < 1) {
       setSuggestions([]);
       setShowSuggestions(false);
       setIsLoadingSuggestions(false);
