@@ -8,7 +8,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, BackgroundTasks
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
-from sqlalchemy import func
+from sqlalchemy import func, text
 
 from config.settings import settings
 from src.database.models import (
@@ -24,6 +24,7 @@ from src.database.repositories import (
     WorkRepository,
     CollaborationRepository,
 )
+from src.api.cache import get_cache, cache_key
 
 logger = logging.getLogger(__name__)
 
@@ -63,6 +64,12 @@ class AnalysisStatus(BaseModel):
     scores_computed: int = 0
 
 
+def _fast_row_count(db: Session, table: str, id_expr: str = "rowid") -> int:
+    """Fast row-count approximation for append-only SQLite tables."""
+    value = db.execute(text(f"SELECT MAX({id_expr}) FROM {table}")).scalar()
+    return int(value or 0)
+
+
 # Dependency for database session
 def get_db():
     """Get database session."""
@@ -80,11 +87,20 @@ async def get_system_status(
     """
     Get system status including database statistics and crawl status.
     """
+    cache = get_cache()
+    status_cache_key = cache_key("system_status")
+    if cache:
+        cached = cache.get(status_cache_key)
+        if cached:
+            return SystemStatus(**cached)
+
     # Database stats
-    total_authors = db.query(func.count(Author.id)).scalar() or 0
-    total_works = db.query(func.count(Work.id)).scalar() or 0
-    total_collaborations = db.query(func.count(Collaboration.id)).scalar() or 0
-    total_scores = db.query(func.count(RelationshipScore.id)).scalar() or 0
+    # NOTE: COUNT(*) on very large SQLite tables can block requests for tens of seconds.
+    # This dataset is append-only in normal operation, so MAX(rowid/id) is a practical proxy.
+    total_authors = _fast_row_count(db, "authors", "rowid")
+    total_works = _fast_row_count(db, "works", "rowid")
+    total_collaborations = _fast_row_count(db, "collaborations", "id")
+    total_scores = _fast_row_count(db, "relationship_scores", "id")
 
     db_stats = DatabaseStats(
         total_authors=total_authors,
@@ -115,7 +131,7 @@ async def get_system_status(
         except Exception:
             pass
 
-    return SystemStatus(
+    response = SystemStatus(
         status="healthy",
         version="1.0.0",
         database=db_stats,
@@ -123,6 +139,9 @@ async def get_system_status(
         redis_enabled=settings.database.redis_enabled,
         redis_connected=redis_connected,
     )
+    if cache:
+        cache.set(status_cache_key, response.model_dump(), ex=300)
+    return response
 
 
 @router.get("/stats")

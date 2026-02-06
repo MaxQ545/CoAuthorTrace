@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from config.settings import settings
-from src.database.models import get_session, Author
+from src.database.models import get_session, Author, InstitutionStats
 from src.database.repositories import AuthorRepository, CollaborationRepository
 from src.analysis.relationship_scorer import RelationshipScorer
 from src.analysis.research_fields import ResearchFieldsCalculator
@@ -41,6 +41,38 @@ def _load_institution_catalog() -> dict:
         if name:
             mapping[inst_id] = name
     return mapping
+
+
+def _resolve_institution_from_catalog(name: str) -> tuple[Optional[str], Optional[str]]:
+    """Resolve institution id/name from catalog by exact/partial name match."""
+    if not name:
+        return None, None
+
+    q = name.strip().lower()
+    if not q:
+        return None, None
+
+    catalog = _load_institution_catalog()
+    exact: list[tuple[str, str]] = []
+    partial: list[tuple[str, str]] = []
+
+    for inst_id, inst_name in catalog.items():
+        n = (inst_name or "").strip().lower()
+        if not n:
+            continue
+        if n == q:
+            exact.append((inst_id, inst_name))
+        elif q in n or n in q:
+            partial.append((inst_id, inst_name))
+
+    if exact:
+        return exact[0]
+
+    if partial:
+        partial.sort(key=lambda item: abs(len(item[1]) - len(name)))
+        return partial[0]
+
+    return None, None
 
 # Pydantic models for API responses
 
@@ -356,15 +388,73 @@ async def get_institution_ranking(
             detail="Either institution_id or institution_name must be provided"
         )
 
+    # Year-filtered ranking without pre-aggregations is expensive on large datasets.
+    # In fast mode, keep endpoint responsive by using all-time cached counters.
+    if fast and (from_year is not None or to_year is not None):
+        from_year = None
+        to_year = None
+
+    # Cache by full query tuple to avoid expensive ranking recomputation.
+    cache = get_cache()
+    cache_k = cache_key(
+        "institution_ranking",
+        institution_id or "",
+        institution_name or "",
+        limit,
+        offset,
+        from_year if from_year is not None else "",
+        to_year if to_year is not None else "",
+        "fast" if fast else "full",
+    )
+    if cache:
+        cached = cache.get(cache_k)
+        if cached:
+            return InstitutionRankingResponse(**cached)
+
     repo = AuthorRepository(db)
 
-    if institution_id and not institution_name:
-        institution_name = _load_institution_catalog().get(institution_id)
+    # Prefer institution_id path whenever possible. It's significantly faster
+    # than affiliation name scan on large datasets.
+    requested_name = institution_name
+    query_institution_name = institution_name
+
+    if institution_id:
+        query_institution_name = None
+        if not requested_name:
+            requested_name = _load_institution_catalog().get(institution_id)
+    elif institution_name:
+        resolved_id, resolved_name = _resolve_institution_from_catalog(institution_name)
+        if resolved_id:
+            institution_id = resolved_id
+            query_institution_name = None
+            requested_name = resolved_name or requested_name
+        else:
+            # Fallback: query indexed InstitutionStats only (no heavy live aggregation).
+            candidate = (
+                db.query(InstitutionStats)
+                .filter(InstitutionStats.institution_name.ilike(f"%{institution_name}%"))
+                .order_by(InstitutionStats.author_count.desc())
+                .first()
+            )
+            if candidate:
+                institution_id = candidate.institution_id
+                query_institution_name = None
+                requested_name = candidate.institution_name or requested_name
+
+    # Avoid expensive full affiliation scan when fast mode is requested.
+    if fast and query_institution_name and not institution_id:
+        raise HTTPException(
+            status_code=404,
+            detail=(
+                "Institution not found in indexed catalog. "
+                "Please use institution_id or set fast=false."
+            ),
+        )
 
     try:
         results, total = repo.get_top_authors_by_institution(
             institution_id=institution_id,
-            institution_name=institution_name,
+            institution_name=query_institution_name,
             limit=limit,
             offset=offset,
             from_year=from_year,
@@ -378,7 +468,7 @@ async def get_institution_ranking(
         raise HTTPException(status_code=404, detail="No authors found for this institution")
 
     # Prefer requested institution name when available
-    inst_name = institution_name or (results[0][0].last_known_institution_name if results else None)
+    inst_name = requested_name or (results[0][0].last_known_institution_name if results else None)
 
     authors = []
     for idx, (author, works_count, cited_by_count) in enumerate(results):
@@ -401,7 +491,7 @@ async def get_institution_ranking(
             research_fields=research_fields_models,
         ))
 
-    return InstitutionRankingResponse(
+    response = InstitutionRankingResponse(
         institution_id=institution_id,
         institution_name=inst_name,
         authors=authors,
@@ -409,6 +499,9 @@ async def get_institution_ranking(
         limit=limit,
         offset=offset,
     )
+    if cache:
+        cache.set(cache_k, response.model_dump(), ex=settings.api.cache_ttl)
+    return response
 
 
 @router.get("/{author_id}", response_model=AuthorResponse)

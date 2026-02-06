@@ -551,16 +551,11 @@ class AuthorRepository:
                 .all()
             )
 
-            results = []
-            for author in rows:
-                works_count = author.works_count or 0
-                cited_by_count = author.cited_by_count or 0
-                if author.alias_ids:
-                    works_count = self.get_merged_works_count(author.id)
-                    cited_by_count = self._get_merged_cited_by_count_by_year(author.id)
-                results.append((author, works_count, cited_by_count))
-
-            results.sort(key=lambda x: x[1], reverse=True)
+            # Keep fast path truly O(page_size): use precomputed counters on Author.
+            results = [
+                (author, author.works_count or 0, author.cited_by_count or 0)
+                for author in rows
+            ]
             return results, total
 
         # Build base filter for canonical authors only
