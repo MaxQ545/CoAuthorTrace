@@ -60,7 +60,7 @@ function RankingPage() {
 
     try {
       const data = await api.getInstitutionRanking(
-        institutionId, null, 100, 0, null, null
+        institutionId, null, 100, 0, null, null, false
       );
       setRanking(data);
     } catch (err) {
