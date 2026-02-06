@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import api from '../api/client';
-import { useTimeFilter } from '../contexts/TimeFilterContext';
 import ResearchFieldsBadges from '../components/ResearchFieldsBadges';
 import { Building2, ChevronRight, GraduationCap, FileText, Quote, Loader2, AlertCircle, ExternalLink } from 'lucide-react';
 import { cn } from '../lib/utils';
@@ -9,7 +8,6 @@ import { motion } from 'framer-motion';
 
 function RankingPage() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const { timeRange } = useTimeFilter();
   const [institutions, setInstitutions] = useState([]);
   const [ranking, setRanking] = useState(null);
   const [initialLoading, setInitialLoading] = useState(true);
@@ -33,7 +31,7 @@ function RankingPage() {
     } else {
       setRanking(null);
     }
-  }, [selectedInstitutionId, timeRange.fromYear, timeRange.toYear]);
+  }, [selectedInstitutionId]);
 
   const loadInstitutions = async (query = '') => {
     setInstitutionsLoading(true);
@@ -62,7 +60,7 @@ function RankingPage() {
 
     try {
       const data = await api.getInstitutionRanking(
-        institutionId, null, 100, 0, timeRange.fromYear, timeRange.toYear
+        institutionId, null, 100, 0, null, null
       );
       setRanking(data);
     } catch (err) {
