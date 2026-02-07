@@ -266,20 +266,38 @@ class AuthorRepository:
         from_year: Optional[int] = None,
         to_year: Optional[int] = None,
     ) -> list[tuple[Author, int]]:
-        """Get direct collaborators sorted by collaboration count."""
-        q = self.session.query(Collaboration).filter(
-            or_(
+        """
+        Get direct collaborators sorted by collaboration count.
+
+        When *from_year* / *to_year* are supplied the counts are recomputed
+        from the Authorship+Work tables so they reflect only the requested
+        window.  Without a year range the fast precomputed Collaboration
+        table is used.
+        """
+        if from_year is None and to_year is None:
+            return self._get_collaborators_fast(author_id, limit)
+        return self._get_collaborators_by_year(author_id, limit, from_year, to_year)
+
+    def _get_collaborators_fast(
+        self, author_id: str, limit: int,
+    ) -> list[tuple[Author, int]]:
+        """Fast path: read from precomputed Collaboration table."""
+        collaborations = (
+            self.session.query(Collaboration)
+            .filter(or_(
                 Collaboration.author_id_1 == author_id,
                 Collaboration.author_id_2 == author_id,
-            )
+            ))
+            .order_by(Collaboration.collaboration_count.desc())
+            .limit(limit)
+            .all()
         )
-        collaborations = q.order_by(Collaboration.collaboration_count.desc()).limit(limit).all()
 
-        # Batch-fetch all collaborator authors
         other_ids = []
         for collab in collaborations:
-            other_id = collab.author_id_2 if collab.author_id_1 == author_id else collab.author_id_1
-            other_ids.append(other_id)
+            other_ids.append(
+                collab.author_id_2 if collab.author_id_1 == author_id else collab.author_id_1
+            )
 
         authors_map = {a.id: a for a in self.get_by_ids(other_ids)}
 
@@ -288,7 +306,58 @@ class AuthorRepository:
             other_author = authors_map.get(other_id)
             if other_author:
                 results.append((other_author, collab.collaboration_count))
+        return results
 
+    def _get_collaborators_by_year(
+        self,
+        author_id: str,
+        limit: int,
+        from_year: Optional[int],
+        to_year: Optional[int],
+    ) -> list[tuple[Author, int]]:
+        """
+        Slow path: recompute collaboration counts from Authorship/Work
+        filtered to the requested year window.
+        """
+        from sqlalchemy.orm import aliased
+
+        A1 = aliased(Authorship)
+        A2 = aliased(Authorship)
+
+        q = (
+            self.session.query(
+                A2.author_id.label("other_id"),
+                func.count(distinct(A1.work_id)).label("cnt"),
+            )
+            .join(A2, and_(A1.work_id == A2.work_id, A1.author_id != A2.author_id))
+            .join(Work, Work.id == A1.work_id)
+            .filter(A1.author_id == author_id)
+        )
+
+        if from_year is not None:
+            q = q.filter(Work.publication_year >= from_year)
+        if to_year is not None:
+            q = q.filter(Work.publication_year <= to_year)
+
+        rows = (
+            q.group_by(A2.author_id)
+            .order_by(func.count(distinct(A1.work_id)).desc())
+            .limit(limit)
+            .all()
+        )
+
+        if not rows:
+            return []
+
+        other_ids = [r.other_id for r in rows]
+        count_map = {r.other_id: r.cnt for r in rows}
+        authors_map = {a.id: a for a in self.get_by_ids(other_ids)}
+
+        results = []
+        for oid in other_ids:
+            author = authors_map.get(oid)
+            if author:
+                results.append((author, count_map[oid]))
         return results
 
     # ---- institution ranking ----
