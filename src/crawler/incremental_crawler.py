@@ -1,5 +1,8 @@
 """
 Incremental crawler for OpenAlex data with state persistence.
+
+Depends only on crawler-internal modules (client, parser, weight,
+batch_processor) and the ``StorageBackend`` / ``CrawlerConfig`` abstractions.
 """
 import asyncio
 import hashlib
@@ -7,18 +10,12 @@ import logging
 from datetime import datetime, timedelta
 from typing import Optional
 
-from sqlalchemy.orm import Session
-
-from config.settings import settings
-from src.database.models import CrawlState, get_session, session_scope
-from src.database.repositories import (
-    AuthorRepository,
-    WorkRepository,
-    CollaborationRepository,
-)
-from src.crawler.openalex_client import OpenAlexClient, parse_work
+from src.crawler.config import CrawlerConfig
+from src.crawler.client import OpenAlexClient
+from src.crawler.parser import parse_work
+from src.crawler.weight import WeightCalculator
 from src.crawler.batch_processor import process_batch
-from src.analysis.weight_calculator import WeightCalculator
+from src.crawler.storage import StorageBackend, SQLAlchemyStorage
 
 logger = logging.getLogger(__name__)
 
@@ -28,61 +25,35 @@ class IncrementalCrawler:
 
     def __init__(
         self,
-        institution_ids: Optional[list[str]] = None,
-        concept_ids: Optional[list[str]] = None,
-        source_ids: Optional[list[str]] = None,
-        from_date: Optional[str] = None,
+        config: Optional[CrawlerConfig] = None,
+        storage: Optional[StorageBackend] = None,
     ):
-        self.institution_ids = institution_ids or settings.scope.institution_ids
-        self.concept_ids = concept_ids or settings.scope.concept_ids
-        self.source_ids = source_ids or settings.scope.source_ids
-        self.from_date = from_date or settings.scope.from_date
+        self.cfg = config or CrawlerConfig.from_settings()
 
         self.client = OpenAlexClient(
-            email=settings.crawler.openalex_email,
-            rate_limit=settings.crawler.rate_limit,
-            max_retries=settings.crawler.max_retries,
+            email=self.cfg.openalex_email,
+            api_key=self.cfg.openalex_api_key,
+            rate_limit=self.cfg.rate_limit,
+            max_retries=self.cfg.max_retries,
         )
-
-        self.weight_calculator = WeightCalculator()
+        self.weight_calculator = WeightCalculator(
+            half_life_days=self.cfg.time_decay_half_life_days,
+        )
+        self._storage = storage
         self._scope_hash = self._compute_scope_hash()
 
     def _compute_scope_hash(self) -> str:
-        scope_str = f"{sorted(self.institution_ids)}|{sorted(self.concept_ids)}|{sorted(self.source_ids)}"
+        scope_str = (
+            f"{sorted(self.cfg.institution_ids)}"
+            f"|{sorted(self.cfg.concept_ids)}"
+            f"|{sorted(self.cfg.source_ids)}"
+        )
         return hashlib.sha256(scope_str.encode()).hexdigest()[:16]
 
-    def _get_crawl_state(self, session: Session) -> Optional[CrawlState]:
-        return (
-            session.query(CrawlState)
-            .filter(CrawlState.scope_hash == self._scope_hash)
-            .first()
-        )
-
-    def _create_crawl_state(self, session: Session) -> CrawlState:
-        state = CrawlState(scope_hash=self._scope_hash, status="idle", works_crawled=0)
-        session.add(state)
-        session.commit()
-        return state
-
-    def _update_crawl_state(
-        self,
-        session: Session,
-        state: CrawlState,
-        cursor: Optional[str] = None,
-        works_crawled: Optional[int] = None,
-        status: Optional[str] = None,
-        error_message: Optional[str] = None,
-    ):
-        if cursor is not None:
-            state.last_cursor = cursor
-        if works_crawled is not None:
-            state.works_crawled = works_crawled
-        if status is not None:
-            state.status = status
-        if error_message is not None:
-            state.error_message = error_message
-        state.last_crawl_date = datetime.utcnow()
-        session.commit()
+    def _get_storage(self) -> StorageBackend:
+        if self._storage is None:
+            self._storage = SQLAlchemyStorage()
+        return self._storage
 
     async def crawl(
         self,
@@ -90,7 +61,6 @@ class IncrementalCrawler:
         max_works: Optional[int] = None,
         batch_size: int = 100,
     ) -> dict:
-        """Execute crawl operation."""
         stats = {
             "works_processed": 0,
             "works_new": 0,
@@ -100,42 +70,42 @@ class IncrementalCrawler:
             "errors": [],
         }
 
-        session = get_session()
+        storage = self._get_storage()
 
         try:
-            state = self._get_crawl_state(session)
+            state = storage.get_crawl_state(self._scope_hash)
             if state is None:
-                state = self._create_crawl_state(session)
+                storage.save_crawl_state(self._scope_hash, status="idle", works_crawled=0)
+                state = storage.get_crawl_state(self._scope_hash)
 
-            from_date = self.from_date
-            if incremental and state.last_crawl_date:
-                from_date = (state.last_crawl_date - timedelta(days=1)).strftime("%Y-%m-%d")
+            from_date = self.cfg.from_date
+            if incremental and state and state.get("last_crawl_date"):
+                last_dt = state["last_crawl_date"]
+                if isinstance(last_dt, str):
+                    last_dt = datetime.fromisoformat(last_dt)
+                from_date = (last_dt - timedelta(days=1)).strftime("%Y-%m-%d")
                 logger.info(f"Incremental crawl from {from_date}")
 
-            self._update_crawl_state(session, state, status="running")
+            storage.save_crawl_state(self._scope_hash, status="running")
 
-            author_repo = AuthorRepository(session)
-            work_repo = WorkRepository(session)
-            collab_repo = CollaborationRepository(session)
-
-            batch_works = []
-            batch_authors = []
-            batch_authorships = []
+            batch_works: list[dict] = []
+            batch_authors: list[dict] = []
+            batch_authorships: list[dict] = []
 
             async for work_data in self.client.iter_works(
-                institution_ids=self.institution_ids,
-                concept_ids=self.concept_ids,
-                source_ids=self.source_ids,
+                institution_ids=self.cfg.institution_ids,
+                concept_ids=self.cfg.concept_ids,
+                source_ids=self.cfg.source_ids,
                 from_date=from_date,
                 max_results=max_works,
             ):
                 try:
                     work_dict, authors, authorships = parse_work(
                         work_data,
-                        preferred_institution_ids=self.institution_ids,
+                        preferred_institution_ids=self.cfg.institution_ids,
                     )
 
-                    if not work_repo.exists(work_dict["id"]):
+                    if not storage.work_exists(work_dict["id"]):
                         batch_works.append(work_dict)
                         batch_authors.extend(authors)
                         batch_authorships.extend(authorships)
@@ -144,14 +114,13 @@ class IncrementalCrawler:
                     stats["works_processed"] += 1
 
                     if len(batch_works) >= batch_size:
-                        new_a, new_as, new_c = process_batch(
-                            session, author_repo, work_repo, collab_repo,
+                        na, nas, nc = process_batch(
+                            storage, self.weight_calculator,
                             batch_works, batch_authors, batch_authorships,
-                            self.weight_calculator,
                         )
-                        stats["authors_new"] += new_a
-                        stats["authorships_new"] += new_as
-                        stats["collaborations_updated"] += new_c
+                        stats["authors_new"] += na
+                        stats["authorships_new"] += nas
+                        stats["collaborations_updated"] += nc
                         batch_works, batch_authors, batch_authorships = [], [], []
                         logger.info(f"Processed {stats['works_processed']} works...")
 
@@ -159,55 +128,43 @@ class IncrementalCrawler:
                     logger.error(f"Error processing work: {e}")
                     stats["errors"].append(str(e))
 
-            # Process remaining
             if batch_works:
-                new_a, new_as, new_c = process_batch(
-                    session, author_repo, work_repo, collab_repo,
+                na, nas, nc = process_batch(
+                    storage, self.weight_calculator,
                     batch_works, batch_authors, batch_authorships,
-                    self.weight_calculator,
                 )
-                stats["authors_new"] += new_a
-                stats["authorships_new"] += new_as
-                stats["collaborations_updated"] += new_c
+                stats["authors_new"] += na
+                stats["authorships_new"] += nas
+                stats["collaborations_updated"] += nc
 
-            self._update_crawl_state(
-                session, state,
-                works_crawled=state.works_crawled + stats["works_new"],
+            prev_crawled = (state or {}).get("works_crawled", 0) or 0
+            storage.save_crawl_state(
+                self._scope_hash,
+                works_crawled=prev_crawled + stats["works_new"],
                 status="completed",
             )
             logger.info(f"Crawl completed: {stats}")
 
         except Exception as e:
             logger.error(f"Crawl failed: {e}")
-            if state:
-                self._update_crawl_state(session, state, status="failed", error_message=str(e))
+            storage.save_crawl_state(self._scope_hash, status="failed", error_message=str(e))
             stats["errors"].append(str(e))
             raise
         finally:
             await self.client.close()
-            session.close()
+            storage.close()
 
         return stats
-
-    def get_status(self) -> dict:
-        with session_scope() as session:
-            state = self._get_crawl_state(session)
-            if state:
-                return {
-                    "status": state.status,
-                    "last_crawl_date": state.last_crawl_date.isoformat() if state.last_crawl_date else None,
-                    "works_crawled": state.works_crawled,
-                    "error_message": state.error_message,
-                }
-            return {"status": "not_started", "last_crawl_date": None, "works_crawled": 0, "error_message": None}
 
 
 async def run_crawl(
     incremental: bool = True,
     max_works: Optional[int] = None,
+    config: Optional[CrawlerConfig] = None,
+    storage: Optional[StorageBackend] = None,
 ) -> dict:
     """Convenience function to run crawler."""
-    crawler = IncrementalCrawler()
+    crawler = IncrementalCrawler(config=config, storage=storage)
     return await crawler.crawl(incremental=incremental, max_works=max_works)
 
 

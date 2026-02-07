@@ -1,27 +1,20 @@
 """
 Multi-institution concurrent crawler with persistent state tracking.
+
+Depends only on crawler-internal modules and the ``StorageBackend`` /
+``CrawlerConfig`` abstractions.
 """
 import asyncio
 import logging
 from datetime import datetime, timedelta
 from typing import Optional
 
-from sqlalchemy.orm import Session
-
-from config.settings import settings, TARGET_INSTITUTIONS
-from src.database.models import (
-    InstitutionCrawlState,
-    get_session,
-    session_scope,
-)
-from src.database.repositories import (
-    AuthorRepository,
-    WorkRepository,
-    CollaborationRepository,
-)
-from src.crawler.openalex_client import OpenAlexClient, parse_work
+from src.crawler.config import CrawlerConfig
+from src.crawler.client import OpenAlexClient
+from src.crawler.parser import parse_work
+from src.crawler.weight import WeightCalculator
 from src.crawler.batch_processor import process_batch
-from src.analysis.weight_calculator import WeightCalculator
+from src.crawler.storage import StorageBackend, SQLAlchemyStorage
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +32,8 @@ class MultiInstitutionCrawler:
 
     def __init__(
         self,
+        config: Optional[CrawlerConfig] = None,
+        storage_factory=None,
         institution_ids: Optional[list[str]] = None,
         concept_ids: Optional[list[str]] = None,
         max_concurrent: Optional[int] = None,
@@ -46,23 +41,30 @@ class MultiInstitutionCrawler:
         commit_batch_size: Optional[int] = None,
         cursor_ttl_hours: Optional[int] = None,
     ):
-        self.institution_ids = institution_ids or list(TARGET_INSTITUTIONS.keys())
-        self.concept_ids = concept_ids
-        self.max_concurrent = max_concurrent or settings.multi_crawler.max_concurrent
-        self.rate_limit_per_crawler = rate_limit_per_crawler or settings.multi_crawler.rate_limit_per_crawler
-        self.commit_batch_size = commit_batch_size or settings.multi_crawler.commit_batch_size
-        self.cursor_ttl_hours = cursor_ttl_hours or settings.multi_crawler.cursor_ttl_hours
+        self.cfg = config or CrawlerConfig.from_settings()
 
-        self.weight_calculator = WeightCalculator()
+        # Allow overrides
+        self.institution_ids = institution_ids or list(self.cfg.target_institutions.keys())
+        self.concept_ids = concept_ids
+        self.max_concurrent = max_concurrent or self.cfg.max_concurrent
+        self.rate_limit_per_crawler = rate_limit_per_crawler or self.cfg.rate_limit_per_crawler
+        self.commit_batch_size = commit_batch_size or self.cfg.commit_batch_size
+        self.cursor_ttl_hours = cursor_ttl_hours or self.cfg.cursor_ttl_hours
+
+        self.weight_calculator = WeightCalculator(
+            half_life_days=self.cfg.time_decay_half_life_days,
+        )
+        self._storage_factory = storage_factory or (lambda: SQLAlchemyStorage())
         self._semaphore: Optional[asyncio.Semaphore] = None
         self._clients: dict[str, OpenAlexClient] = {}
 
     def _get_client(self, institution_id: str) -> OpenAlexClient:
         if institution_id not in self._clients:
             self._clients[institution_id] = OpenAlexClient(
-                email=settings.crawler.openalex_email,
+                email=self.cfg.openalex_email,
+                api_key=self.cfg.openalex_api_key,
                 rate_limit=self.rate_limit_per_crawler,
-                max_retries=settings.crawler.max_retries,
+                max_retries=self.cfg.max_retries,
             )
         return self._clients[institution_id]
 
@@ -70,57 +72,6 @@ class MultiInstitutionCrawler:
         for client in self._clients.values():
             await client.close()
         self._clients.clear()
-
-    def _get_or_create_state(
-        self, session: Session, institution_id: str
-    ) -> InstitutionCrawlState:
-        state = (
-            session.query(InstitutionCrawlState)
-            .filter(InstitutionCrawlState.institution_id == institution_id)
-            .first()
-        )
-        if state is None:
-            institution_name = TARGET_INSTITUTIONS.get(institution_id, "Unknown")
-            state = InstitutionCrawlState(
-                institution_id=institution_id,
-                institution_name=institution_name,
-                status="idle",
-                total_works_crawled=0,
-            )
-            session.add(state)
-            session.commit()
-        return state
-
-    def _update_state(
-        self,
-        session: Session,
-        state: InstitutionCrawlState,
-        cursor: Optional[str] = None,
-        cursor_valid_until: Optional[datetime] = None,
-        last_publication_date: Optional[str] = None,
-        total_works_crawled: Optional[int] = None,
-        status: Optional[str] = None,
-        error_message: Optional[str] = None,
-        completed: bool = False,
-    ):
-        if cursor is not None:
-            state.last_cursor = cursor
-        if cursor_valid_until is not None:
-            state.cursor_valid_until = cursor_valid_until
-        if last_publication_date is not None:
-            if state.last_publication_date is None or last_publication_date > state.last_publication_date:
-                state.last_publication_date = last_publication_date
-        if total_works_crawled is not None:
-            state.total_works_crawled = total_works_crawled
-        if status is not None:
-            state.status = status
-        if error_message is not None:
-            state.error_message = error_message
-        if completed:
-            state.last_crawl_completed = datetime.utcnow()
-            state.last_cursor = None
-            state.cursor_valid_until = None
-        session.commit()
 
     async def crawl_all(
         self,
@@ -131,7 +82,7 @@ class MultiInstitutionCrawler:
         self._semaphore = asyncio.Semaphore(self.max_concurrent)
 
         tasks = [
-            self._crawl_institution_with_semaphore(inst_id, incremental, max_works_per_inst)
+            self._crawl_with_semaphore(inst_id, incremental, max_works_per_inst)
             for inst_id in self.institution_ids
         ]
 
@@ -146,7 +97,7 @@ class MultiInstitutionCrawler:
                 all_stats[inst_id] = result
         return all_stats
 
-    async def _crawl_institution_with_semaphore(
+    async def _crawl_with_semaphore(
         self, institution_id: str, incremental: bool, max_works: Optional[int],
     ) -> dict:
         async with self._semaphore:
@@ -155,10 +106,10 @@ class MultiInstitutionCrawler:
     async def _crawl_institution(
         self, institution_id: str, incremental: bool, max_works: Optional[int],
     ) -> dict:
-        """Crawl a single institution with state tracking."""
+        inst_name = self.cfg.target_institutions.get(institution_id, "Unknown")
         stats = {
             "institution_id": institution_id,
-            "institution_name": TARGET_INSTITUTIONS.get(institution_id, "Unknown"),
+            "institution_name": inst_name,
             "works_processed": 0,
             "works_new": 0,
             "authors_new": 0,
@@ -167,38 +118,46 @@ class MultiInstitutionCrawler:
             "errors": [],
         }
 
-        session = get_session()
+        storage = self._storage_factory()
         client = self._get_client(institution_id)
 
         try:
-            state = self._get_or_create_state(session, institution_id)
-            self._update_state(session, state, status="running", error_message=None)
+            state = storage.get_institution_crawl_state(institution_id)
+            if state is None:
+                storage.save_institution_crawl_state(
+                    institution_id,
+                    institution_name=inst_name,
+                    status="running",
+                )
+                state = storage.get_institution_crawl_state(institution_id) or {}
+            else:
+                storage.save_institution_crawl_state(
+                    institution_id, status="running", error_message="",
+                )
 
-            from_date = settings.scope.from_date
+            from_date = self.cfg.from_date
             cursor = None
 
-            if incremental and state.last_publication_date:
-                from_date = state.last_publication_date
+            if incremental and state.get("last_publication_date"):
+                from_date = state["last_publication_date"]
                 logger.info(f"[{institution_id}] Incremental crawl from {from_date}")
 
             now = datetime.utcnow()
-            if state.last_cursor and state.cursor_valid_until and state.cursor_valid_until > now:
-                cursor = state.last_cursor
+            valid_until = state.get("cursor_valid_until")
+            if state.get("last_cursor") and valid_until and valid_until > now:
+                cursor = state["last_cursor"]
                 logger.info(f"[{institution_id}] Resuming from saved cursor")
 
-            author_repo = AuthorRepository(session)
-            work_repo = WorkRepository(session)
-            collab_repo = CollaborationRepository(session)
-
-            batch_works = []
-            batch_authors = []
-            batch_authorships = []
-            max_pub_date = state.last_publication_date
+            batch_works: list[dict] = []
+            batch_authors: list[dict] = []
+            batch_authorships: list[dict] = []
+            max_pub_date = state.get("last_publication_date")
 
             async for work_data in self._iter_works_with_cursor(
                 client=client, institution_id=institution_id,
                 from_date=from_date, cursor=cursor,
-                max_results=max_works, state=state, session=session,
+                max_results=max_works,
+                storage=storage,
             ):
                 try:
                     work_dict, authors, authorships = parse_work(
@@ -210,7 +169,7 @@ class MultiInstitutionCrawler:
                         if max_pub_date is None or pub_date_str > max_pub_date:
                             max_pub_date = pub_date_str
 
-                    if not work_repo.exists(work_dict["id"]):
+                    if not storage.work_exists(work_dict["id"]):
                         batch_works.append(work_dict)
                         batch_authors.extend(authors)
                         batch_authorships.extend(authorships)
@@ -219,14 +178,13 @@ class MultiInstitutionCrawler:
                     stats["works_processed"] += 1
 
                     if len(batch_works) >= self.commit_batch_size:
-                        new_a, new_as, new_c = process_batch(
-                            session, author_repo, work_repo, collab_repo,
+                        na, nas, nc = process_batch(
+                            storage, self.weight_calculator,
                             batch_works, batch_authors, batch_authorships,
-                            self.weight_calculator,
                         )
-                        stats["authors_new"] += new_a
-                        stats["authorships_new"] += new_as
-                        stats["collaborations_updated"] += new_c
+                        stats["authors_new"] += na
+                        stats["authorships_new"] += nas
+                        stats["collaborations_updated"] += nc
                         batch_works, batch_authors, batch_authorships = [], [], []
 
                         logger.info(
@@ -239,32 +197,34 @@ class MultiInstitutionCrawler:
                     stats["errors"].append(str(e))
 
             if batch_works:
-                new_a, new_as, new_c = process_batch(
-                    session, author_repo, work_repo, collab_repo,
+                na, nas, nc = process_batch(
+                    storage, self.weight_calculator,
                     batch_works, batch_authors, batch_authorships,
-                    self.weight_calculator,
                 )
-                stats["authors_new"] += new_a
-                stats["authorships_new"] += new_as
-                stats["collaborations_updated"] += new_c
+                stats["authors_new"] += na
+                stats["authorships_new"] += nas
+                stats["collaborations_updated"] += nc
 
-            self._update_state(
-                session, state,
+            prev_crawled = (state or {}).get("total_works_crawled", 0) or 0
+            storage.save_institution_crawl_state(
+                institution_id,
                 last_publication_date=max_pub_date,
-                total_works_crawled=state.total_works_crawled + stats["works_new"],
-                status="completed", completed=True,
+                total_works_crawled=prev_crawled + stats["works_new"],
+                status="completed",
+                completed=True,
             )
             stats["status"] = "completed"
             logger.info(f"[{institution_id}] Crawl completed: {stats['works_new']} new works")
 
         except Exception as e:
             logger.error(f"[{institution_id}] Crawl failed: {e}")
-            if state:
-                self._update_state(session, state, status="failed", error_message=str(e))
+            storage.save_institution_crawl_state(
+                institution_id, status="failed", error_message=str(e),
+            )
             stats["status"] = "failed"
             stats["errors"].append(str(e))
         finally:
-            session.close()
+            storage.close()
 
         return stats
 
@@ -272,9 +232,8 @@ class MultiInstitutionCrawler:
         self, client: OpenAlexClient, institution_id: str,
         from_date: str, cursor: Optional[str],
         max_results: Optional[int],
-        state: InstitutionCrawlState, session: Session,
+        storage: StorageBackend,
     ):
-        """Iterate through works with cursor persistence."""
         current_cursor = cursor or "*"
         total_yielded = 0
         batch_count = 0
@@ -302,32 +261,44 @@ class MultiInstitutionCrawler:
 
             if current_cursor and batch_count % 5 == 0:
                 cursor_valid = datetime.utcnow() + timedelta(hours=self.cursor_ttl_hours)
-                self._update_state(session, state, cursor=current_cursor, cursor_valid_until=cursor_valid)
+                storage.save_institution_crawl_state(
+                    institution_id,
+                    last_cursor=current_cursor,
+                    cursor_valid_until=cursor_valid,
+                )
                 logger.debug(f"[{institution_id}] Saved cursor checkpoint")
 
             if not results:
                 break
 
 
-def get_all_institution_states() -> list[dict]:
+def get_all_institution_states(
+    storage: Optional[StorageBackend] = None,
+    config: Optional[CrawlerConfig] = None,
+) -> list[dict]:
     """Get crawl states for all institutions."""
-    with session_scope() as session:
-        states = session.query(InstitutionCrawlState).all()
-        return [
-            {
-                "institution_id": s.institution_id,
-                "institution_name": s.institution_name or TARGET_INSTITUTIONS.get(s.institution_id, "Unknown"),
-                "status": s.status,
-                "total_works_crawled": s.total_works_crawled,
-                "last_publication_date": s.last_publication_date,
-                "last_crawl_completed": s.last_crawl_completed.isoformat() if s.last_crawl_completed else None,
+    cfg = config or CrawlerConfig.from_settings()
+
+    if storage is None:
+        storage = SQLAlchemyStorage()
+
+    target_institutions = cfg.target_institutions
+    result = []
+    for inst_id in target_institutions:
+        state = storage.get_institution_crawl_state(inst_id)
+        if state:
+            now = datetime.utcnow()
+            result.append({
+                **state,
+                "institution_name": state.get("institution_name") or target_institutions.get(inst_id, "Unknown"),
                 "has_pending_cursor": bool(
-                    s.last_cursor and s.cursor_valid_until and s.cursor_valid_until > datetime.utcnow()
+                    state.get("last_cursor")
+                    and state.get("cursor_valid_until")
+                    and state["cursor_valid_until"] > now
                 ),
-                "error_message": s.error_message,
-            }
-            for s in states
-        ]
+            })
+    storage.close()
+    return result
 
 
 async def run_multi_crawl(
@@ -336,9 +307,13 @@ async def run_multi_crawl(
     incremental: bool = True,
     max_works_per_inst: Optional[int] = None,
     max_concurrent: Optional[int] = None,
+    config: Optional[CrawlerConfig] = None,
+    storage_factory=None,
 ) -> dict[str, dict]:
     """Convenience function to run multi-institution crawler."""
     crawler = MultiInstitutionCrawler(
+        config=config,
+        storage_factory=storage_factory,
         institution_ids=institution_ids,
         concept_ids=concept_ids,
         max_concurrent=max_concurrent,
