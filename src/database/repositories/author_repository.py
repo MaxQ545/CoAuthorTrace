@@ -360,6 +360,35 @@ class AuthorRepository:
                 results.append((author, count_map[oid]))
         return results
 
+    # ---- batch cited_by_count ----
+
+    def _get_cited_by_count_batch(
+        self,
+        author_ids: list[str],
+        from_year: Optional[int] = None,
+        to_year: Optional[int] = None,
+    ) -> dict[str, int]:
+        """Batch-compute cited_by_count from works for multiple authors."""
+        if not author_ids:
+            return {}
+
+        q = (
+            self.session.query(
+                Authorship.author_id,
+                func.coalesce(func.sum(Work.cited_by_count), 0).label("total_cited"),
+            )
+            .join(Work, Work.id == Authorship.work_id)
+            .filter(Authorship.author_id.in_(author_ids))
+        )
+
+        if from_year is not None:
+            q = q.filter(Work.publication_year >= from_year)
+        if to_year is not None:
+            q = q.filter(Work.publication_year <= to_year)
+
+        rows = q.group_by(Authorship.author_id).all()
+        return {r.author_id: int(r.total_cited) for r in rows}
+
     # ---- institution ranking ----
 
     def get_institutions(
@@ -457,7 +486,8 @@ class AuthorRepository:
                 .limit(limit)
                 .all()
             )
-            return [(a, a.works_count or 0, a.cited_by_count or 0) for a in authors], total
+            cited_map = self._get_cited_by_count_batch([a.id for a in authors])
+            return [(a, a.works_count or 0, cited_map.get(a.id, 0)) for a in authors], total
 
         # Slow path: compute from authorships with optional year filter
         count_q = (
@@ -488,12 +518,13 @@ class AuthorRepository:
 
         authors = self.session.query(Author).filter(Author.id.in_(author_ids)).all()
         author_map = {a.id: a for a in authors}
+        cited_map = self._get_cited_by_count_batch(author_ids, from_year, to_year)
 
         results = []
         for aid in author_ids:
             a = author_map.get(aid)
             if a:
-                results.append((a, count_map.get(aid, 0), a.cited_by_count or 0))
+                results.append((a, count_map.get(aid, 0), cited_map.get(aid, 0)))
 
         return results, total
 
