@@ -51,12 +51,7 @@ class ResearchFieldsCalculator:
         if not author:
             return []
 
-        author_ids = [author_id]
-        if author.alias_ids:
-            try:
-                author_ids.extend(json.loads(author.alias_ids))
-            except Exception:
-                pass
+        author_ids = author.get_all_ids()
 
         # Query all works with concepts for this author
         works = (

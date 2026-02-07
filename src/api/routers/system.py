@@ -2,66 +2,30 @@
 System status and management API endpoints.
 """
 import logging
-from datetime import datetime
 from typing import Optional
 
 from fastapi import APIRouter, Depends, BackgroundTasks
-from pydantic import BaseModel
 from sqlalchemy.orm import Session
-from sqlalchemy import func, text
+from sqlalchemy import text
 
 from config.settings import settings
-from src.database.models import (
-    get_session,
-    Author,
-    Work,
-    Collaboration,
-    RelationshipScore,
-    CrawlState,
-)
+from src.database.models import CrawlState
 from src.database.repositories import (
     AuthorRepository,
     WorkRepository,
     CollaborationRepository,
 )
 from src.api.cache import get_cache, cache_key
+from src.api.deps import get_db
+from src.api.schemas import (
+    DatabaseStats,
+    CrawlStatus,
+    SystemStatus,
+)
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
-
-
-class DatabaseStats(BaseModel):
-    """Database statistics."""
-    total_authors: int
-    total_works: int
-    total_collaborations: int
-    total_relationship_scores: int
-
-
-class CrawlStatus(BaseModel):
-    """Crawl status."""
-    status: str
-    last_crawl_date: Optional[str] = None
-    works_crawled: int = 0
-    error_message: Optional[str] = None
-
-
-class SystemStatus(BaseModel):
-    """System status response."""
-    status: str
-    version: str
-    database: DatabaseStats
-    crawl: CrawlStatus
-    redis_enabled: bool
-    redis_connected: bool
-
-
-class AnalysisStatus(BaseModel):
-    """Analysis status."""
-    last_run: Optional[str] = None
-    model_version: Optional[str] = None
-    scores_computed: int = 0
 
 
 def _fast_row_count(db: Session, table: str) -> int:
@@ -73,23 +37,11 @@ def _fast_row_count(db: Session, table: str) -> int:
     return int(value or 0)
 
 
-# Dependency for database session
-def get_db():
-    """Get database session."""
-    session = get_session()
-    try:
-        yield session
-    finally:
-        session.close()
-
-
 @router.get("/status", response_model=SystemStatus)
 async def get_system_status(
     db: Session = Depends(get_db),
 ):
-    """
-    Get system status including database statistics and crawl status.
-    """
+    """Get system status including database statistics and crawl status."""
     cache = get_cache()
     status_cache_key = cache_key("system_status")
     if cache:
@@ -97,22 +49,14 @@ async def get_system_status(
         if cached:
             return SystemStatus(**cached)
 
-    # Database stats
-    total_authors = _fast_row_count(db, "authors")
-    total_works = _fast_row_count(db, "works")
-    total_collaborations = _fast_row_count(db, "collaborations")
-    total_scores = _fast_row_count(db, "relationship_scores")
-
     db_stats = DatabaseStats(
-        total_authors=total_authors,
-        total_works=total_works,
-        total_collaborations=total_collaborations,
-        total_relationship_scores=total_scores,
+        total_authors=_fast_row_count(db, "authors"),
+        total_works=_fast_row_count(db, "works"),
+        total_collaborations=_fast_row_count(db, "collaborations"),
+        total_relationship_scores=_fast_row_count(db, "relationship_scores"),
     )
 
-    # Crawl status
     crawl_state = db.query(CrawlState).order_by(CrawlState.updated_at.desc()).first()
-
     if crawl_state:
         crawl_status = CrawlStatus(
             status=crawl_state.status,
@@ -123,7 +67,6 @@ async def get_system_status(
     else:
         crawl_status = CrawlStatus(status="not_started")
 
-    # Redis status (use cached check to avoid blocking)
     redis_connected = False
     if settings.database.redis_enabled:
         try:
@@ -149,17 +92,11 @@ async def get_system_status(
 async def get_detailed_stats(
     db: Session = Depends(get_db),
 ):
-    """
-    Get detailed statistics about the database.
-    """
-    author_repo = AuthorRepository(db)
-    work_repo = WorkRepository(db)
-    collab_repo = CollaborationRepository(db)
-
+    """Get detailed statistics about the database."""
     return {
-        "authors": author_repo.get_statistics(),
-        "works": work_repo.get_statistics(),
-        "collaborations": collab_repo.get_statistics(),
+        "authors": AuthorRepository(db).get_statistics(),
+        "works": WorkRepository(db).get_statistics(),
+        "collaborations": CollaborationRepository(db).get_statistics(),
     }
 
 
@@ -169,12 +106,7 @@ async def trigger_crawl(
     incremental: bool = True,
     max_works: Optional[int] = None,
 ):
-    """
-    Trigger a crawl operation.
-
-    This starts the crawl in the background and returns immediately.
-    Check /status for progress.
-    """
+    """Trigger a crawl operation (background)."""
     from src.crawler.incremental_crawler import run_crawl
     import asyncio
 
@@ -182,7 +114,6 @@ async def trigger_crawl(
         asyncio.run(run_crawl(incremental=incremental, max_works=max_works))
 
     background_tasks.add_task(run_crawl_task)
-
     return {
         "status": "started",
         "message": "Crawl operation started in background",
@@ -196,11 +127,7 @@ async def trigger_analysis(
     background_tasks: BackgroundTasks,
     model_path: Optional[str] = None,
 ):
-    """
-    Trigger analysis (GNN training and score computation).
-
-    This starts the analysis in the background and returns immediately.
-    """
+    """Trigger analysis (GNN training and score computation) in background."""
     from src.analysis.relationship_scorer import run_analysis
 
     model_path = model_path or str(settings.project_root / "data/models/graphsage.pt")
@@ -209,7 +136,6 @@ async def trigger_analysis(
         run_analysis(model_path=model_path)
 
     background_tasks.add_task(run_analysis_task)
-
     return {
         "status": "started",
         "message": "Analysis operation started in background",
@@ -219,9 +145,7 @@ async def trigger_analysis(
 
 @router.get("/config")
 async def get_config():
-    """
-    Get current system configuration (non-sensitive values only).
-    """
+    """Get current system configuration (non-sensitive values only)."""
     return {
         "scope": {
             "institution_ids": settings.scope.institution_ids,

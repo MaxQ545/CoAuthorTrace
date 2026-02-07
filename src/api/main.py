@@ -5,11 +5,12 @@ import logging
 from contextlib import asynccontextmanager
 from typing import Optional
 
-from fastapi import FastAPI, Depends
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 
 from config.settings import settings
-from src.database.models import init_database, get_session
+from src.database.engine import init_database
 from src.api.routers import authors, system
 
 logger = logging.getLogger(__name__)
@@ -18,14 +19,10 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan manager."""
-    # Startup
     logger.info("Starting Coauthor Tracing API...")
     init_database()
     logger.info("Database initialized")
-
     yield
-
-    # Shutdown
     logger.info("Shutting down Coauthor Tracing API...")
 
 
@@ -40,6 +37,9 @@ def create_app() -> FastAPI:
         redoc_url="/api/redoc",
         openapi_url="/api/openapi.json",
     )
+
+    # GZip middleware (compress responses > 500 bytes)
+    app.add_middleware(GZipMiddleware, minimum_size=500)
 
     # CORS middleware
     app.add_middleware(
@@ -64,7 +64,6 @@ def create_app() -> FastAPI:
 
     @app.get("/")
     async def root():
-        """Root endpoint."""
         return {
             "name": "Coauthor Tracing API",
             "version": "1.0.0",
@@ -73,7 +72,6 @@ def create_app() -> FastAPI:
 
     @app.get("/health")
     async def health():
-        """Health check endpoint."""
         return {"status": "healthy"}
 
     return app

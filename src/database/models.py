@@ -1,12 +1,11 @@
 """
 SQLAlchemy ORM models for Coauthor Tracing System.
 """
+import json
 from datetime import datetime
 from typing import Optional
-from contextlib import contextmanager
 
 from sqlalchemy import (
-    create_engine,
     Column,
     String,
     Integer,
@@ -21,11 +20,10 @@ from sqlalchemy import (
 from sqlalchemy.orm import (
     DeclarativeBase,
     relationship,
-    sessionmaker,
-    Session,
 )
 
-from config.settings import settings
+# Re-export engine utilities so existing `from src.database.models import ...` still works.
+from src.database.engine import get_engine, get_session, session_scope, init_database  # noqa: F401
 
 
 class Base(DeclarativeBase):
@@ -64,7 +62,33 @@ class Author(Base):
         Index("idx_author_orcid", "orcid"),
         Index("idx_author_institution", "last_known_institution_id"),
         Index("idx_author_canonical", "is_canonical"),
+        # Composite index for the most common query pattern: canonical authors by institution
+        Index("idx_author_inst_canonical", "last_known_institution_id", "is_canonical"),
     )
+
+    # ---- helpers ----
+
+    def get_alias_ids(self) -> list[str]:
+        """Parse alias_ids JSON and return as a list (empty list if none)."""
+        if not self.alias_ids:
+            return []
+        try:
+            return json.loads(self.alias_ids)
+        except (json.JSONDecodeError, TypeError):
+            return []
+
+    def get_all_ids(self) -> list[str]:
+        """Return this author's ID together with all alias IDs."""
+        return [self.id] + self.get_alias_ids()
+
+    def get_research_fields_list(self) -> list[dict]:
+        """Parse research_fields JSON and return as a list."""
+        if not self.research_fields:
+            return []
+        try:
+            return json.loads(self.research_fields)
+        except (json.JSONDecodeError, TypeError):
+            return []
 
 
 class InstitutionStats(Base):
@@ -136,6 +160,8 @@ class Authorship(Base):
         Index("idx_authorship_author", "author_id"),
         Index("idx_authorship_work", "work_id"),
         Index("idx_authorship_position", "author_position"),
+        # Composite index for co-authorship lookups
+        Index("idx_authorship_author_work", "author_id", "work_id"),
     )
 
 
@@ -247,51 +273,3 @@ class InstitutionCrawlState(Base):
         Index("idx_inst_crawl_institution", "institution_id"),
         Index("idx_inst_crawl_status", "status"),
     )
-
-
-# Database engine and session management
-_engine = None
-_SessionLocal = None
-
-
-def get_engine():
-    """Get or create the database engine."""
-    global _engine
-    if _engine is None:
-        _engine = create_engine(
-            settings.database.postgres_url,
-            echo=False,
-            pool_size=10,
-            max_overflow=20,
-            pool_pre_ping=True,
-        )
-    return _engine
-
-
-def get_session() -> Session:
-    """Get a new database session."""
-    global _SessionLocal
-    if _SessionLocal is None:
-        _SessionLocal = sessionmaker(bind=get_engine())
-    return _SessionLocal()
-
-
-@contextmanager
-def session_scope():
-    """Provide a transactional scope around a series of operations."""
-    session = get_session()
-    try:
-        yield session
-        session.commit()
-    except Exception:
-        session.rollback()
-        raise
-    finally:
-        session.close()
-
-
-def init_database():
-    """Initialize the database by creating all tables."""
-    engine = get_engine()
-    Base.metadata.create_all(engine)
-    return engine

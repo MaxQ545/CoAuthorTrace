@@ -1,251 +1,110 @@
-"""Repository for Collaboration operations."""
+"""
+Collaboration data access layer.
+"""
+import logging
 from datetime import datetime
 from typing import Optional
-from sqlalchemy.orm import Session
+
 from sqlalchemy import func, or_, and_
+from sqlalchemy.orm import Session
 
 from src.database.models import (
-    Collaboration,
-    RelationshipScore,
-    Authorship,
-    Work,
-    Author,
+    Author, Work, Authorship, Collaboration, RelationshipScore,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class CollaborationRepository:
-    """Repository for Collaboration CRUD operations."""
+    """Repository for collaboration data access."""
 
     def __init__(self, session: Session):
         self.session = session
 
     def get_collaboration(
-        self,
-        author_id_1: str,
-        author_id_2: str
+        self, author_id_1: str, author_id_2: str,
     ) -> Optional[Collaboration]:
-        """Get collaboration between two authors."""
-        # Ensure consistent ordering
-        if author_id_1 > author_id_2:
-            author_id_1, author_id_2 = author_id_2, author_id_1
-
+        """Get collaboration between two authors (order-independent)."""
+        a, b = sorted([author_id_1, author_id_2])
         return (
             self.session.query(Collaboration)
             .filter(
-                and_(
-                    Collaboration.author_id_1 == author_id_1,
-                    Collaboration.author_id_2 == author_id_2
-                )
+                Collaboration.author_id_1 == a,
+                Collaboration.author_id_2 == b,
             )
             .first()
         )
+
+    def get_collaboration_counts_batch(
+        self, author_id: str, other_ids: list[str],
+    ) -> dict[str, int]:
+        """
+        Batch-fetch collaboration counts between author_id and each of other_ids.
+
+        Returns dict mapping other_id -> collaboration_count.
+        Avoids N+1 by using a single IN query.
+        """
+        if not other_ids:
+            return {}
+
+        rows = (
+            self.session.query(
+                Collaboration.author_id_1,
+                Collaboration.author_id_2,
+                Collaboration.collaboration_count,
+            )
+            .filter(
+                or_(
+                    and_(
+                        Collaboration.author_id_1 == author_id,
+                        Collaboration.author_id_2.in_(other_ids),
+                    ),
+                    and_(
+                        Collaboration.author_id_2 == author_id,
+                        Collaboration.author_id_1.in_(other_ids),
+                    ),
+                )
+            )
+            .all()
+        )
+
+        result = {}
+        for a1, a2, cnt in rows:
+            other = a2 if a1 == author_id else a1
+            result[other] = cnt
+        return result
 
     def create_or_update(
         self,
         author_id_1: str,
         author_id_2: str,
         weight: float,
-        collaboration_date: Optional[datetime] = None
+        publication_date: Optional[datetime] = None,
     ) -> Collaboration:
-        """Create or update a collaboration record."""
-        # Ensure consistent ordering
-        if author_id_1 > author_id_2:
-            author_id_1, author_id_2 = author_id_2, author_id_1
+        """Create or update a collaboration edge."""
+        a, b = sorted([author_id_1, author_id_2])
 
-        collab = self.get_collaboration(author_id_1, author_id_2)
-
+        collab = self.get_collaboration(a, b)
         if collab:
             collab.collaboration_count += 1
             collab.total_weight += weight
-            if collaboration_date:
-                if collab.first_collaboration is None or collaboration_date < collab.first_collaboration:
-                    collab.first_collaboration = collaboration_date
-                if collab.last_collaboration is None or collaboration_date > collab.last_collaboration:
-                    collab.last_collaboration = collaboration_date
+            if publication_date:
+                if collab.first_collaboration is None or publication_date < collab.first_collaboration:
+                    collab.first_collaboration = publication_date
+                if collab.last_collaboration is None or publication_date > collab.last_collaboration:
+                    collab.last_collaboration = publication_date
         else:
             collab = Collaboration(
-                author_id_1=author_id_1,
-                author_id_2=author_id_2,
+                author_id_1=a,
+                author_id_2=b,
                 collaboration_count=1,
                 total_weight=weight,
-                first_collaboration=collaboration_date,
-                last_collaboration=collaboration_date,
+                first_collaboration=publication_date,
+                last_collaboration=publication_date,
             )
             self.session.add(collab)
 
         return collab
-
-    def get_collaborations_for_author(
-        self,
-        author_id: str,
-        min_count: int = 1,
-        limit: int = 100
-    ) -> list[Collaboration]:
-        """Get all collaborations for an author."""
-        return (
-            self.session.query(Collaboration)
-            .filter(
-                or_(
-                    Collaboration.author_id_1 == author_id,
-                    Collaboration.author_id_2 == author_id
-                )
-            )
-            .filter(Collaboration.collaboration_count >= min_count)
-            .order_by(Collaboration.total_weight.desc())
-            .limit(limit)
-            .all()
-        )
-
-    def rebuild_collaborations_for_work(
-        self,
-        work_id: str,
-        weight_calculator
-    ) -> int:
-        """Rebuild collaboration edges for a specific work."""
-        # Get all authorships for this work
-        authorships = (
-            self.session.query(Authorship)
-            .filter(Authorship.work_id == work_id)
-            .all()
-        )
-
-        if len(authorships) < 2:
-            return 0
-
-        # Get work for publication date
-        work = self.session.query(Work).filter(Work.id == work_id).first()
-        pub_date = work.publication_date if work else None
-
-        # Create edges between all author pairs
-        edge_count = 0
-        for i, auth1 in enumerate(authorships):
-            for auth2 in authorships[i + 1:]:
-                weight = weight_calculator.calculate_weight(
-                    position_1=auth1.author_position,
-                    position_2=auth2.author_position,
-                    is_corresponding_1=auth1.is_corresponding,
-                    is_corresponding_2=auth2.is_corresponding,
-                    total_authors=len(authorships),
-                    publication_date=pub_date,
-                )
-                self.create_or_update(
-                    auth1.author_id,
-                    auth2.author_id,
-                    weight,
-                    pub_date
-                )
-                edge_count += 1
-
-        return edge_count
-
-    def count(self) -> int:
-        """Get total number of collaboration edges."""
-        return self.session.query(func.count(Collaboration.id)).scalar()
-
-    def get_statistics(self) -> dict:
-        """Get collaboration statistics."""
-        return {
-            "total_edges": self.count(),
-            "avg_collaboration_count": (
-                self.session.query(func.avg(Collaboration.collaboration_count))
-                .scalar() or 0
-            ),
-            "avg_weight": (
-                self.session.query(func.avg(Collaboration.total_weight))
-                .scalar() or 0
-            ),
-        }
-
-    # Relationship Score methods
-    def save_relationship_score(
-        self,
-        author_id_1: str,
-        author_id_2: str,
-        graphsage_score: Optional[float] = None,
-        weighted_score: Optional[float] = None,
-        combined_score: Optional[float] = None,
-        model_version: Optional[str] = None
-    ) -> RelationshipScore:
-        """Save or update relationship score."""
-        # Ensure consistent ordering
-        if author_id_1 > author_id_2:
-            author_id_1, author_id_2 = author_id_2, author_id_1
-
-        score = (
-            self.session.query(RelationshipScore)
-            .filter(
-                and_(
-                    RelationshipScore.author_id_1 == author_id_1,
-                    RelationshipScore.author_id_2 == author_id_2
-                )
-            )
-            .first()
-        )
-
-        if score:
-            if graphsage_score is not None:
-                score.graphsage_score = graphsage_score
-            if weighted_score is not None:
-                score.weighted_score = weighted_score
-            if combined_score is not None:
-                score.combined_score = combined_score
-            if model_version is not None:
-                score.model_version = model_version
-            score.computed_at = datetime.utcnow()
-        else:
-            score = RelationshipScore(
-                author_id_1=author_id_1,
-                author_id_2=author_id_2,
-                graphsage_score=graphsage_score,
-                weighted_score=weighted_score,
-                combined_score=combined_score,
-                model_version=model_version,
-            )
-            self.session.add(score)
-
-        return score
-
-    def get_top_relations_for_author(
-        self,
-        author_id: str,
-        score_type: str = "combined_score",
-        limit: int = 20
-    ) -> list[tuple[str, float]]:
-        """Get top related authors with scores."""
-        scores = (
-            self.session.query(RelationshipScore)
-            .filter(
-                or_(
-                    RelationshipScore.author_id_1 == author_id,
-                    RelationshipScore.author_id_2 == author_id
-                )
-            )
-            .order_by(getattr(RelationshipScore, score_type).desc())
-            .limit(limit)
-            .all()
-        )
-
-        result = []
-        for score in scores:
-            other_id = (
-                score.author_id_2
-                if score.author_id_1 == author_id
-                else score.author_id_1
-            )
-            result.append((other_id, getattr(score, score_type)))
-
-        return result
-
-    def bulk_save_relationship_scores(
-        self,
-        scores: list[dict]
-    ) -> int:
-        """Bulk save relationship scores. Returns count saved."""
-        count = 0
-        for score_data in scores:
-            self.save_relationship_score(**score_data)
-            count += 1
-        return count
 
     def get_co_authored_works(
         self,
@@ -256,73 +115,48 @@ class CollaborationRepository:
         sort_by: str = "publication_date",
         sort_order: str = "desc",
         from_year: Optional[int] = None,
-        to_year: Optional[int] = None
-    ) -> tuple[list[Work], int]:
-        """
-        获取两位作者共同合作的论文列表。
+        to_year: Optional[int] = None,
+    ) -> tuple[list, int]:
+        """Get co-authored works between two authors (handles aliases)."""
+        author_1 = self.session.query(Author).filter(Author.id == author_id_1).first()
+        author_2 = self.session.query(Author).filter(Author.id == author_id_2).first()
 
-        支持处理合并作者 (alias_ids) 的情况：
-        - 如果任一作者是 canonical 记录，会同时查询其所有 alias_ids
-        """
-        import json
+        ids_1 = author_1.get_all_ids() if author_1 else [author_id_1]
+        ids_2 = author_2.get_all_ids() if author_2 else [author_id_2]
 
-        # 获取两位作者的所有相关 ID (包括 alias_ids)
-        def get_all_author_ids(author_id: str) -> list[str]:
-            """获取作者及其所有别名 ID"""
-            author = self.session.query(Author).filter(Author.id == author_id).first()
-            if not author:
-                return [author_id]
-
-            ids = [author_id]
-            if author.alias_ids:
-                try:
-                    alias_list = json.loads(author.alias_ids)
-                    ids.extend(alias_list)
-                except:
-                    pass
-            return ids
-
-        author_ids_1 = get_all_author_ids(author_id_1)
-        author_ids_2 = get_all_author_ids(author_id_2)
-
-        # 子查询：找到作者1参与的所有 work_id
-        subq1 = (
+        sub1 = (
             self.session.query(Authorship.work_id)
-            .filter(Authorship.author_id.in_(author_ids_1))
+            .filter(Authorship.author_id.in_(ids_1))
+            .subquery()
+        )
+        sub2 = (
+            self.session.query(Authorship.work_id)
+            .filter(Authorship.author_id.in_(ids_2))
             .subquery()
         )
 
-        # 子查询：找到作者2参与的所有 work_id
-        subq2 = (
-            self.session.query(Authorship.work_id)
-            .filter(Authorship.author_id.in_(author_ids_2))
-            .subquery()
+        q = self.session.query(Work).filter(
+            Work.id.in_(self.session.query(sub1)),
+            Work.id.in_(self.session.query(sub2)),
         )
 
-        # 查询两者都参与的论文
-        base_query = (
-            self.session.query(Work)
-            .filter(Work.id.in_(subq1))
-            .filter(Work.id.in_(subq2))
-        )
+        if from_year:
+            q = q.filter(Work.publication_year >= from_year)
+        if to_year:
+            q = q.filter(Work.publication_year <= to_year)
 
-        # 添加年份过滤
-        if from_year is not None:
-            base_query = base_query.filter(Work.publication_year >= from_year)
-        if to_year is not None:
-            base_query = base_query.filter(Work.publication_year <= to_year)
+        total = q.count()
 
-        # 计算总数
-        total = base_query.count()
-
-        # 排序
-        sort_column = getattr(Work, sort_by, Work.publication_date)
+        sort_col = getattr(Work, sort_by, Work.publication_date)
         if sort_order == "desc":
-            base_query = base_query.order_by(sort_column.desc().nulls_last())
+            q = q.order_by(sort_col.desc().nullslast())
         else:
-            base_query = base_query.order_by(sort_column.asc().nulls_last())
+            q = q.order_by(sort_col.asc().nullsfirst())
 
-        # 分页
-        works = base_query.offset(offset).limit(limit).all()
-
+        works = q.offset(offset).limit(limit).all()
         return works, total
+
+    def get_statistics(self) -> dict:
+        total = self.session.query(func.count(Collaboration.id)).scalar() or 0
+        total_scores = self.session.query(func.count(RelationshipScore.id)).scalar() or 0
+        return {"total_collaborations": total, "total_relationship_scores": total_scores}

@@ -1,25 +1,45 @@
 """
 Author-related API endpoints.
 """
-import logging
 import json
+import logging
 from functools import lru_cache
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from config.settings import settings
-from src.database.models import get_session, Author, InstitutionStats
+from src.database.models import Author, InstitutionStats
 from src.database.repositories import AuthorRepository, CollaborationRepository
 from src.analysis.relationship_scorer import RelationshipScorer
 from src.analysis.research_fields import ResearchFieldsCalculator
 from src.api.cache import get_cache, cache_key
+from src.api.deps import get_db
+from src.api.schemas import (
+    AuthorIdInfo,
+    InstitutionFrequency,
+    ResearchField,
+    AuthorResponse,
+    AuthorSearchResponse,
+    RankedAuthor,
+    InstitutionRankingResponse,
+    InstitutionInfo,
+    InstitutionsResponse,
+    RelatedAuthor,
+    TopRelationsResponse,
+    NetworkMetrics,
+    NetworkMetricsResponse,
+    CoAuthoredPaper,
+    CoAuthoredPapersResponse,
+)
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+# ---- institution catalog helpers ----
 
 @lru_cache()
 def _load_institution_catalog() -> dict:
@@ -74,198 +94,18 @@ def _resolve_institution_from_catalog(name: str) -> tuple[Optional[str], Optiona
 
     return None, None
 
-# Pydantic models for API responses
 
-class AuthorIdInfo(BaseModel):
-    """Individual author ID info (for merged records)."""
-    id: str
-    orcid: Optional[str] = None
-    works_count: int = 0
+# ---- helper: build research-field models from Author ORM ----
 
-
-class InstitutionFrequency(BaseModel):
-    """Institution frequency for an author."""
-    name: str
-    count: int
+def _research_fields_from_author(author: Author, limit: int = 3) -> Optional[list[ResearchField]]:
+    """Parse cached research_fields JSON on Author into schema objects."""
+    rf_data = author.get_research_fields_list()
+    if not rf_data:
+        return None
+    return [ResearchField(**rf) for rf in rf_data[:limit]]
 
 
-class ResearchField(BaseModel):
-    """Research field for an author."""
-    id: str
-    name: str
-    score: float
-    count: int
-
-
-class AuthorResponse(BaseModel):
-    """Author response model."""
-    id: str
-    display_name: str
-    orcid: Optional[str] = None
-    works_count: int = 0
-    cited_by_count: int = 0
-    last_known_institution_id: Optional[str] = None
-    last_known_institution_name: Optional[str] = None
-    primary_institution_name: Optional[str] = None
-    primary_institution_count: Optional[int] = None
-    top_institutions: Optional[list[InstitutionFrequency]] = None
-    research_fields: Optional[list[ResearchField]] = None
-    is_canonical: bool = True
-    alias_ids: Optional[list[str]] = None  # Merged author IDs (simple list)
-    all_ids: Optional[list[AuthorIdInfo]] = None  # All IDs with their ORCIDs
-
-    class Config:
-        from_attributes = True
-
-    @classmethod
-    def from_author(
-        cls,
-        author,
-        works_count: int = None,
-        cited_by_count: int = None,
-        all_ids_info: list = None,
-        primary_institution_name: Optional[str] = None,
-        primary_institution_count: Optional[int] = None,
-        top_institutions: Optional[list] = None,
-        research_fields: Optional[list] = None,
-    ):
-        """Create response from Author model with computed stats."""
-        import json
-        alias_ids = None
-        if author.alias_ids:
-            try:
-                alias_ids = json.loads(author.alias_ids)
-            except:
-                pass
-
-        return cls(
-            id=author.id,
-            display_name=author.display_name,
-            orcid=author.orcid,
-            works_count=works_count if works_count is not None else author.works_count,
-            cited_by_count=cited_by_count if cited_by_count is not None else author.cited_by_count,
-            last_known_institution_id=author.last_known_institution_id,
-            last_known_institution_name=author.last_known_institution_name,
-            primary_institution_name=primary_institution_name,
-            primary_institution_count=primary_institution_count,
-            top_institutions=top_institutions,
-            research_fields=research_fields,
-            is_canonical=author.is_canonical if author.is_canonical is not None else True,
-            alias_ids=alias_ids,
-            all_ids=all_ids_info,
-        )
-
-
-class AuthorSearchResponse(BaseModel):
-    """Author search results."""
-    results: list[AuthorResponse]
-    total: int
-    limit: int
-    offset: int
-
-
-class RankedAuthor(BaseModel):
-    """Author with ranking info."""
-    rank: int
-    id: str
-    display_name: str
-    orcid: Optional[str] = None
-    works_count: int
-    cited_by_count: int = 0
-    research_fields: Optional[list[ResearchField]] = None
-
-
-class InstitutionRankingResponse(BaseModel):
-    """Institution author ranking response."""
-    institution_id: Optional[str] = None
-    institution_name: str
-    authors: list[RankedAuthor]
-    total: int
-    limit: int
-    offset: int
-
-
-class InstitutionInfo(BaseModel):
-    """Institution summary info."""
-    id: str
-    name: str
-    author_count: int
-
-
-class InstitutionsResponse(BaseModel):
-    """List of institutions."""
-    institutions: list[InstitutionInfo]
-    total: int
-
-
-class RelatedAuthor(BaseModel):
-    """Related author with score."""
-    id: str
-    display_name: str
-    score: float
-    collaboration_count: Optional[int] = None
-
-
-class TopRelationsResponse(BaseModel):
-    """Top relations response."""
-    author_id: str
-    author_name: str
-    relations: list[RelatedAuthor]
-    score_type: str
-
-
-class NetworkMetrics(BaseModel):
-    """Network centrality metrics (computed within institution)."""
-    institution_name: Optional[str] = None
-    institution_author_count: Optional[int] = None
-    degree_centrality: Optional[float] = None
-    betweenness_centrality: Optional[float] = None
-    closeness_centrality: Optional[float] = None
-    pagerank: Optional[float] = None
-    eigenvector_centrality: Optional[float] = None
-    clustering_coefficient: Optional[float] = None
-
-
-class NetworkMetricsResponse(BaseModel):
-    """Network metrics response."""
-    author_id: str
-    author_name: str
-    metrics: NetworkMetrics
-
-
-class CoAuthoredPaper(BaseModel):
-    """Co-authored paper information."""
-    id: str
-    title: str
-    doi: Optional[str] = None
-    publication_date: Optional[str] = None
-    publication_year: Optional[int] = None
-    source_name: Optional[str] = None
-    cited_by_count: int = 0
-    is_open_access: bool = False
-
-
-class CoAuthoredPapersResponse(BaseModel):
-    """Co-authored papers response."""
-    author_id: str
-    author_name: str
-    collaborator_id: str
-    collaborator_name: str
-    papers: list[CoAuthoredPaper]
-    total: int
-    limit: int
-    offset: int
-
-
-# Dependency for database session
-def get_db():
-    """Get database session."""
-    session = get_session()
-    try:
-        yield session
-    finally:
-        session.close()
-
+# ---- endpoints ----
 
 @router.get("/search", response_model=AuthorSearchResponse)
 async def search_authors(
@@ -283,12 +123,6 @@ async def search_authors(
     Performs case-insensitive matching on author display names.
     By default (fuzzy=False), performs exact match (case-insensitive fallback).
     If fuzzy=True, performs partial match (LIKE %q%).
-
-    Results are sorted by works count (descending).
-
-    By default, only returns deduplicated (canonical) author records.
-    Set include_aliases=true to see all records including duplicates.
-    Set include_all_ids=true to get detailed info (ID, ORCID, works) for all merged IDs.
     """
     repo = AuthorRepository(db)
     canonical_only = not include_aliases
@@ -296,34 +130,21 @@ async def search_authors(
         q, limit=limit, offset=offset, canonical_only=canonical_only, fuzzy=fuzzy
     )
 
-    # Build responses with merged works count
     results = []
     for author, works_count in authors_with_counts:
-
-        # Compute merged cited_by_count
         cited_by_count = repo._get_merged_cited_by_count_by_year(author.id)
 
-        # Optionally include all IDs info
         all_ids_info = None
         if include_all_ids and author.is_canonical:
             all_ids_data = repo.get_all_ids_info(author.id)
             all_ids_info = [AuthorIdInfo(**info) for info in all_ids_data]
-
-        # Get research fields from cache (don't compute to keep search fast)
-        research_fields_models = None
-        if author.research_fields:
-            try:
-                rf_data = json.loads(author.research_fields)
-                research_fields_models = [ResearchField(**rf) for rf in rf_data[:3]]  # Show top 3 in search
-            except Exception:
-                pass
 
         results.append(AuthorResponse.from_author(
             author,
             works_count=works_count,
             cited_by_count=cited_by_count,
             all_ids_info=all_ids_info,
-            research_fields=research_fields_models
+            research_fields=_research_fields_from_author(author, limit=3),
         ))
 
     return AuthorSearchResponse(
@@ -342,21 +163,13 @@ async def list_institutions(
     refresh: bool = Query(False, description="Refresh cached institution stats"),
     db: Session = Depends(get_db),
 ):
-    """
-    List all institutions with author counts.
-
-    Returns institutions sorted by number of authors (descending).
-    """
+    """List all institutions with author counts."""
     repo = AuthorRepository(db)
     if refresh:
         repo.refresh_institution_stats()
     institutions, total = repo.get_institutions(
-        limit=limit,
-        offset=offset,
-        query=q,
-        use_cache=True,
+        limit=limit, offset=offset, query=q, use_cache=True,
     )
-
     return InstitutionsResponse(
         institutions=[InstitutionInfo(**inst) for inst in institutions],
         total=total,
@@ -369,39 +182,30 @@ async def get_institution_ranking(
     institution_name: Optional[str] = Query(None, description="Institution name (partial match)"),
     limit: int = Query(50, ge=1, le=200, description="Maximum results"),
     offset: int = Query(0, ge=0, description="Result offset"),
-    from_year: Optional[int] = Query(None, ge=1900, le=2100, description="起始年份（包含）"),
-    to_year: Optional[int] = Query(None, ge=1900, le=2100, description="结束年份（包含）"),
+    from_year: Optional[int] = Query(None, ge=1900, le=2100, description="Start year (inclusive)"),
+    to_year: Optional[int] = Query(None, ge=1900, le=2100, description="End year (inclusive)"),
     fast: bool = Query(True, description="Use cached counts for faster ranking"),
     db: Session = Depends(get_db),
 ):
-    """
-    Get author ranking by publication count for an institution.
-
-    Query by either institution_id (exact match) or institution_name (partial match).
-    Returns authors sorted by works count (descending).
-
-    Optionally filter by publication year range using from_year and to_year.
-    """
+    """Get author ranking by publication count for an institution."""
     if not institution_id and not institution_name:
         raise HTTPException(
             status_code=400,
             detail="Either institution_id or institution_name must be provided"
         )
 
-    # Year-filtered ranking without pre-aggregations is expensive on large datasets.
-    # In fast mode, keep endpoint responsive by using all-time cached counters.
+    # In fast mode, skip expensive year-filtered aggregation
     if fast and (from_year is not None or to_year is not None):
         from_year = None
         to_year = None
 
-    # Cache by full query tuple to avoid expensive ranking recomputation.
+    # Check cache
     cache = get_cache()
     cache_k = cache_key(
         "institution_ranking",
         institution_id or "",
         institution_name or "",
-        limit,
-        offset,
+        limit, offset,
         from_year if from_year is not None else "",
         to_year if to_year is not None else "",
         "fast" if fast else "full",
@@ -413,8 +217,6 @@ async def get_institution_ranking(
 
     repo = AuthorRepository(db)
 
-    # Prefer institution_id path whenever possible. It's significantly faster
-    # than affiliation name scan on large datasets.
     requested_name = institution_name
     query_institution_name = institution_name
 
@@ -429,7 +231,6 @@ async def get_institution_ranking(
             query_institution_name = None
             requested_name = resolved_name or requested_name
         else:
-            # Fallback: query indexed InstitutionStats only (no heavy live aggregation).
             candidate = (
                 db.query(InstitutionStats)
                 .filter(InstitutionStats.institution_name.ilike(f"%{institution_name}%"))
@@ -441,24 +242,19 @@ async def get_institution_ranking(
                 query_institution_name = None
                 requested_name = candidate.institution_name or requested_name
 
-    # Avoid expensive full affiliation scan when fast mode is requested.
     if fast and query_institution_name and not institution_id:
         raise HTTPException(
             status_code=404,
-            detail=(
-                "Institution not found in indexed catalog. "
-                "Please use institution_id or set fast=false."
-            ),
+            detail="Institution not found in indexed catalog. "
+                   "Please use institution_id or set fast=false.",
         )
 
     try:
         results, total = repo.get_top_authors_by_institution(
             institution_id=institution_id,
             institution_name=query_institution_name,
-            limit=limit,
-            offset=offset,
-            from_year=from_year,
-            to_year=to_year,
+            limit=limit, offset=offset,
+            from_year=from_year, to_year=to_year,
             fast=fast,
         )
     except ValueError as e:
@@ -467,20 +263,10 @@ async def get_institution_ranking(
     if not results:
         raise HTTPException(status_code=404, detail="No authors found for this institution")
 
-    # Prefer requested institution name when available
     inst_name = requested_name or (results[0][0].last_known_institution_name if results else None)
 
     authors = []
     for idx, (author, works_count, cited_by_count) in enumerate(results):
-        # Get research fields from cache (show top 2 in ranking)
-        research_fields_models = None
-        if author.research_fields:
-            try:
-                rf_data = json.loads(author.research_fields)
-                research_fields_models = [ResearchField(**rf) for rf in rf_data[:2]]
-            except Exception:
-                pass
-
         authors.append(RankedAuthor(
             rank=offset + idx + 1,
             id=author.id,
@@ -488,7 +274,7 @@ async def get_institution_ranking(
             orcid=author.orcid,
             works_count=works_count,
             cited_by_count=cited_by_count,
-            research_fields=research_fields_models,
+            research_fields=_research_fields_from_author(author, limit=2),
         ))
 
     response = InstitutionRankingResponse(
@@ -509,33 +295,20 @@ async def get_author(
     author_id: str,
     db: Session = Depends(get_db),
 ):
-    """
-    Get author details by ID.
-
-    Returns detailed information about a specific author.
-    If the ID is an alias (merged), redirects to the canonical record.
-    Includes all merged IDs with their individual ORCIDs and works counts.
-    """
+    """Get author details by ID (resolves aliases to canonical record)."""
     repo = AuthorRepository(db)
-
-    # Resolve to canonical ID if this is an alias
     canonical_id = repo.get_canonical_id(author_id)
     author = repo.get_by_id(canonical_id)
 
     if not author:
         raise HTTPException(status_code=404, detail="Author not found")
 
-    # Get merged works count
     works_count = repo.get_merged_works_count(author.id)
-
-    # Get merged cited_by_count (sum of all works' citations)
     cited_by_count = repo._get_merged_cited_by_count_by_year(author.id)
 
-    # Get all IDs info (with ORCIDs and individual works counts)
     all_ids_info = repo.get_all_ids_info(author.id)
     all_ids_response = [AuthorIdInfo(**info) for info in all_ids_info]
 
-    # Compute top institutions from authorship affiliations
     institution_freqs = repo.get_institution_frequencies(author.id, limit=5)
     primary_institution_name = (
         institution_freqs[0]["name"] if institution_freqs else author.last_known_institution_name
@@ -543,7 +316,6 @@ async def get_author(
     primary_institution_count = institution_freqs[0]["count"] if institution_freqs else None
     institution_freq_models = [InstitutionFrequency(**item) for item in institution_freqs]
 
-    # Get research fields (from cache or compute)
     research_fields_calculator = ResearchFieldsCalculator(db)
     research_fields_data = research_fields_calculator.get_cached_or_compute(author.id, top_k=5)
     research_fields_models = [ResearchField(**rf) for rf in research_fields_data] if research_fields_data else None
@@ -571,53 +343,37 @@ async def get_top_relations(
     ),
     db: Session = Depends(get_db),
 ):
-    """
-    Get top-K related authors for a given author.
-
-    Returns authors with highest relationship scores, computed from:
-    - GraphSAGE embedding similarity
-    - Weighted collaboration scores
-    - Combined score (default)
-
-    Results are cached for 24 hours.
-    """
-    # Use default from settings if not specified
+    """Get top-K related authors for a given author."""
     if k is None:
         k = settings.api.default_top_k
 
-    # Check cache
     cache = get_cache()
     cache_k = cache_key("top_relations", author_id, k, score_type)
-
     if cache:
         cached = cache.get(cache_k)
         if cached:
             return TopRelationsResponse(**cached)
 
-    # Get author
     repo = AuthorRepository(db)
     author = repo.get_by_id(author_id)
-
     if not author:
         raise HTTPException(status_code=404, detail="Author not found")
 
-    # Get relations
     collab_repo = CollaborationRepository(db)
     scorer = RelationshipScorer(session=db)
-
     relations = scorer.get_top_relations(author_id, k=k, score_type=score_type)
 
-    # Get collaboration counts
+    # Batch-fetch collaboration counts to avoid N+1
+    other_ids = [other_id for other_id, _, _ in relations]
+    collab_counts = collab_repo.get_collaboration_counts_batch(author_id, other_ids)
+
     result_relations = []
     for other_id, other_name, score in relations:
-        collab = collab_repo.get_collaboration(author_id, other_id)
-        collab_count = collab.collaboration_count if collab else None
-
         result_relations.append(RelatedAuthor(
             id=other_id,
             display_name=other_name,
             score=score or 0.0,
-            collaboration_count=collab_count,
+            collaboration_count=collab_counts.get(other_id),
         ))
 
     response = TopRelationsResponse(
@@ -626,11 +382,8 @@ async def get_top_relations(
         relations=result_relations,
         score_type=score_type,
     )
-
-    # Cache result
     if cache:
         cache.set(cache_k, response.model_dump(), ex=settings.api.cache_ttl)
-
     return response
 
 
@@ -640,36 +393,19 @@ async def get_network_metrics(
     full: bool = Query(True, description="Compute full graph metrics (slower)"),
     db: Session = Depends(get_db),
 ):
-    """
-    Get network centrality metrics for an author.
-
-    Returns various graph-based metrics including:
-    - Degree centrality
-    - Betweenness centrality
-    - Closeness centrality
-    - PageRank
-    - Eigenvector centrality
-    - Clustering coefficient
-
-    Results are cached for 24 hours.
-    """
-    # Check cache
+    """Get network centrality metrics for an author."""
     cache = get_cache()
     cache_k = cache_key("network_metrics", author_id, "full" if full else "fast")
-
     if cache:
         cached = cache.get(cache_k)
         if cached:
             return NetworkMetricsResponse(**cached)
 
-    # Get author
     repo = AuthorRepository(db)
     author = repo.get_by_id(author_id)
-
     if not author:
         raise HTTPException(status_code=404, detail="Author not found")
 
-    # Compute metrics
     scorer = RelationshipScorer(session=db)
     metrics = scorer.compute_centrality_metrics(author_id, full=full)
 
@@ -678,11 +414,8 @@ async def get_network_metrics(
         author_name=author.display_name,
         metrics=NetworkMetrics(**metrics),
     )
-
-    # Cache result
     if cache:
         cache.set(cache_k, response.model_dump(), ex=settings.api.cache_ttl)
-
     return response
 
 
@@ -690,21 +423,13 @@ async def get_network_metrics(
 async def get_collaborators(
     author_id: str,
     limit: int = Query(50, ge=1, le=200, description="Maximum results"),
-    from_year: Optional[int] = Query(None, ge=1900, le=2100, description="起始年份（包含）"),
-    to_year: Optional[int] = Query(None, ge=1900, le=2100, description="结束年份（包含）"),
+    from_year: Optional[int] = Query(None, ge=1900, le=2100, description="Start year (inclusive)"),
+    to_year: Optional[int] = Query(None, ge=1900, le=2100, description="End year (inclusive)"),
     db: Session = Depends(get_db),
 ):
-    """
-    Get direct collaborators for an author.
-
-    Returns authors who have co-authored papers with the specified author,
-    sorted by collaboration count.
-
-    Optionally filter by publication year range using from_year and to_year.
-    """
+    """Get direct collaborators for an author, sorted by collaboration count."""
     repo = AuthorRepository(db)
     author = repo.get_by_id(author_id)
-
     if not author:
         raise HTTPException(status_code=404, detail="Author not found")
 
@@ -712,25 +437,25 @@ async def get_collaborators(
         author_id, limit=limit, from_year=from_year, to_year=to_year
     )
 
-    # Compute primary institution for each collaborator
-    collaborators_with_institution = []
+    # Batch-fetch primary institutions to avoid N+1
+    collab_ids = [collab.id for collab, _ in collaborators]
+    institution_map = repo.get_primary_institutions_batch(collab_ids)
+
+    collaborators_list = []
     for collab, count in collaborators:
-        institution_freqs = repo.get_institution_frequencies(collab.id, limit=1)
-        primary_institution_name = (
-            institution_freqs[0]["name"] if institution_freqs else collab.last_known_institution_name
-        )
-        collaborators_with_institution.append({
+        primary_inst = institution_map.get(collab.id, collab.last_known_institution_name)
+        collaborators_list.append({
             "id": collab.id,
             "display_name": collab.display_name,
             "collaboration_count": count,
-            "primary_institution_name": primary_institution_name,
+            "primary_institution_name": primary_inst,
             "last_known_institution_name": collab.last_known_institution_name,
         })
 
     return {
         "author_id": author_id,
         "author_name": author.display_name,
-        "collaborators": collaborators_with_institution,
+        "collaborators": collaborators_list,
     }
 
 
@@ -738,34 +463,22 @@ async def get_collaborators(
 async def get_co_authored_papers(
     author_id: str,
     collaborator_id: str,
-    limit: int = Query(20, ge=1, le=100, description="每页数量"),
-    offset: int = Query(0, ge=0, description="分页偏移"),
+    limit: int = Query(20, ge=1, le=100, description="Page size"),
+    offset: int = Query(0, ge=0, description="Offset"),
     sort_by: str = Query(
         "publication_date",
-        description="排序字段",
+        description="Sort field",
         pattern="^(publication_date|cited_by_count|title)$"
     ),
-    sort_order: str = Query(
-        "desc",
-        description="排序方向",
-        pattern="^(asc|desc)$"
-    ),
-    from_year: Optional[int] = Query(None, ge=1900, le=2100, description="起始年份（包含）"),
-    to_year: Optional[int] = Query(None, ge=1900, le=2100, description="结束年份（包含）"),
+    sort_order: str = Query("desc", description="Sort direction", pattern="^(asc|desc)$"),
+    from_year: Optional[int] = Query(None, ge=1900, le=2100, description="Start year (inclusive)"),
+    to_year: Optional[int] = Query(None, ge=1900, le=2100, description="End year (inclusive)"),
     db: Session = Depends(get_db),
 ):
-    """
-    获取两位作者共同合作的论文列表。
-
-    返回指定作者与合作者共同发表的论文，支持分页和排序。
-    会自动处理合并作者 (alias_ids) 的情况。
-
-    可通过 from_year 和 to_year 参数过滤指定年份范围内的论文。
-    """
+    """Get co-authored papers between two authors (handles merged aliases)."""
     repo = AuthorRepository(db)
     collab_repo = CollaborationRepository(db)
 
-    # 验证两位作者都存在
     author = repo.get_by_id(author_id)
     if not author:
         raise HTTPException(status_code=404, detail="Author not found")
@@ -774,19 +487,14 @@ async def get_co_authored_papers(
     if not collaborator:
         raise HTTPException(status_code=404, detail="Collaborator not found")
 
-    # 获取共同合作的论文
     works, total = collab_repo.get_co_authored_works(
         author_id_1=author_id,
         author_id_2=collaborator_id,
-        limit=limit,
-        offset=offset,
-        sort_by=sort_by,
-        sort_order=sort_order,
-        from_year=from_year,
-        to_year=to_year,
+        limit=limit, offset=offset,
+        sort_by=sort_by, sort_order=sort_order,
+        from_year=from_year, to_year=to_year,
     )
 
-    # 构建响应
     papers = [
         CoAuthoredPaper(
             id=work.id,
