@@ -134,7 +134,7 @@ class AuthorRepository:
 
             # Fallback to case-insensitive match if no results
             if total == 0:
-                base_filter = Author.display_name.collate("NOCASE") == query
+                base_filter = func.lower(Author.display_name) == func.lower(query)
                 if canonical_only:
                     base_filter = base_filter & (Author.is_canonical == True)
                 total = (

@@ -57,7 +57,7 @@ class DatabaseSettings(BaseSettings):
         extra="ignore"
     )
 
-    sqlite_path: Path = Field(default=Path("data/coauthor.db"))
+    postgres_url: str = "postgresql://coauthor:coauthor@localhost:5432/coauthor"
     redis_url: str = "redis://localhost:6379/0"
     redis_enabled: bool = False
 

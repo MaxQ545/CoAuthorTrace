@@ -10,16 +10,28 @@ from src.database.models import init_database, get_engine, Base
 
 @pytest.fixture(scope="module")
 def test_client():
-    """Create test client with in-memory database."""
-    # Use in-memory database for tests
+    """Create test client with PostgreSQL test database."""
     import os
-    os.environ["COAUTHOR_DATABASE__SQLITE_PATH"] = ":memory:"
+    os.environ["COAUTHOR_DATABASE__POSTGRES_URL"] = "postgresql://coauthor:coauthor@localhost:5432/coauthor_test"
     os.environ["COAUTHOR_DATABASE__REDIS_ENABLED"] = "false"
+
+    # Reset cached engine/session so new settings take effect
+    import src.database.models as _models
+    _models._engine = None
+    _models._SessionLocal = None
+
+    # Create tables in test database
+    engine = init_database()
 
     app = create_app()
 
     with TestClient(app) as client:
         yield client
+
+    # Cleanup: drop all tables after tests
+    Base.metadata.drop_all(engine)
+    _models._engine = None
+    _models._SessionLocal = None
 
 
 class TestRootEndpoints:

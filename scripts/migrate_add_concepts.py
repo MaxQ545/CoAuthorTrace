@@ -28,14 +28,17 @@ def migrate():
         # Author.research_fields
         ("authors", "research_fields", "ALTER TABLE authors ADD COLUMN research_fields TEXT"),
         # Author.research_fields_updated_at
-        ("authors", "research_fields_updated_at", "ALTER TABLE authors ADD COLUMN research_fields_updated_at DATETIME"),
+        ("authors", "research_fields_updated_at", "ALTER TABLE authors ADD COLUMN research_fields_updated_at TIMESTAMP"),
     ]
 
     with engine.connect() as conn:
         for table, column, sql in migrations:
             # Check if column exists
-            result = conn.execute(text(f"PRAGMA table_info({table})"))
-            columns = [row[1] for row in result.fetchall()]
+            result = conn.execute(text(
+                "SELECT column_name FROM information_schema.columns "
+                "WHERE table_name = :table"
+            ), {"table": table})
+            columns = [row[0] for row in result.fetchall()]
 
             if column in columns:
                 print(f"Column {table}.{column} already exists, skipping...")

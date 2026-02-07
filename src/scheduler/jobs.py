@@ -4,7 +4,6 @@ APScheduler jobs for automated crawling and analysis.
 import asyncio
 import logging
 from datetime import datetime
-from pathlib import Path
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.jobstores.sqlalchemy import SQLAlchemyJobStore
@@ -20,9 +19,7 @@ scheduler: BackgroundScheduler = None
 
 def get_jobstore_url() -> str:
     """Get SQLAlchemy URL for job store."""
-    db_path = settings.project_root / "data/scheduler.db"
-    db_path.parent.mkdir(parents=True, exist_ok=True)
-    return f"sqlite:///{db_path}"
+    return settings.database.postgres_url
 
 
 def create_scheduler() -> BackgroundScheduler:

@@ -258,12 +258,12 @@ def get_engine():
     """Get or create the database engine."""
     global _engine
     if _engine is None:
-        db_path = settings.project_root / settings.database.sqlite_path
-        db_path.parent.mkdir(parents=True, exist_ok=True)
         _engine = create_engine(
-            f"sqlite:///{db_path}",
+            settings.database.postgres_url,
             echo=False,
-            connect_args={"check_same_thread": False}
+            pool_size=10,
+            max_overflow=20,
+            pool_pre_ping=True,
         )
     return _engine
 

@@ -64,9 +64,12 @@ class AnalysisStatus(BaseModel):
     scores_computed: int = 0
 
 
-def _fast_row_count(db: Session, table: str, id_expr: str = "rowid") -> int:
-    """Fast row-count approximation for append-only SQLite tables."""
-    value = db.execute(text(f"SELECT MAX({id_expr}) FROM {table}")).scalar()
+def _fast_row_count(db: Session, table: str) -> int:
+    """Fast row-count approximation using PostgreSQL pg_class statistics."""
+    value = db.execute(
+        text("SELECT reltuples::bigint FROM pg_class WHERE relname = :table"),
+        {"table": table},
+    ).scalar()
     return int(value or 0)
 
 
@@ -95,12 +98,10 @@ async def get_system_status(
             return SystemStatus(**cached)
 
     # Database stats
-    # NOTE: COUNT(*) on very large SQLite tables can block requests for tens of seconds.
-    # This dataset is append-only in normal operation, so MAX(rowid/id) is a practical proxy.
-    total_authors = _fast_row_count(db, "authors", "rowid")
-    total_works = _fast_row_count(db, "works", "rowid")
-    total_collaborations = _fast_row_count(db, "collaborations", "id")
-    total_scores = _fast_row_count(db, "relationship_scores", "id")
+    total_authors = _fast_row_count(db, "authors")
+    total_works = _fast_row_count(db, "works")
+    total_collaborations = _fast_row_count(db, "collaborations")
+    total_scores = _fast_row_count(db, "relationship_scores")
 
     db_stats = DatabaseStats(
         total_authors=total_authors,
