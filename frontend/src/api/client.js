@@ -79,7 +79,9 @@ class ApiClient {
     if (institutionName) params.append('institution_name', institutionName);
     if (fromYear) params.append('from_year', fromYear);
     if (toYear) params.append('to_year', toYear);
-    if (fast) params.append('fast', 'true');
+    if (fast !== null && fast !== undefined) {
+      params.append('fast', fast ? 'true' : 'false');
+    }
     return this.request(`/authors/ranking/by-institution?${params}`);
   }
 
