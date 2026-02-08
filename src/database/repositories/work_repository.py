@@ -29,6 +29,30 @@ class WorkRepository:
             .scalar() > 0
         )
 
+    def exists_batch(self, work_ids: list[str]) -> set[str]:
+        """Check which work IDs already exist in the database.
+
+        Args:
+            work_ids: List of work IDs to check.
+
+        Returns:
+            Set of work IDs that already exist.
+        """
+        if not work_ids:
+            return set()
+        # Process in chunks to avoid overly large IN clauses
+        existing = set()
+        chunk_size = 500
+        for i in range(0, len(work_ids), chunk_size):
+            chunk = work_ids[i:i + chunk_size]
+            rows = (
+                self.session.query(Work.id)
+                .filter(Work.id.in_(chunk))
+                .all()
+            )
+            existing.update(row[0] for row in rows)
+        return existing
+
     def create(self, work_data: dict) -> Work:
         """Create a new work."""
         work = Work(**work_data)

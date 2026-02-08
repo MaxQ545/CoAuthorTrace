@@ -64,6 +64,12 @@ class Author(Base):
         Index("idx_author_orcid", "orcid"),
         Index("idx_author_institution", "last_known_institution_id"),
         Index("idx_author_canonical", "is_canonical"),
+        Index(
+            "idx_author_canonical_inst_works",
+            "is_canonical",
+            "last_known_institution_id",
+            works_count.desc(),
+        ),
     )
 
 
@@ -136,6 +142,7 @@ class Authorship(Base):
         Index("idx_authorship_author", "author_id"),
         Index("idx_authorship_work", "work_id"),
         Index("idx_authorship_position", "author_position"),
+        Index("idx_authorship_author_work", "author_id", "work_id"),
     )
 
 
@@ -163,6 +170,8 @@ class Collaboration(Base):
         Index("idx_collaboration_author1", "author_id_1"),
         Index("idx_collaboration_author2", "author_id_2"),
         Index("idx_collaboration_weight", "total_weight"),
+        Index("idx_collaboration_a1_weight", "author_id_1", total_weight.desc()),
+        Index("idx_collaboration_a2_weight", "author_id_2", total_weight.desc()),
     )
 
 
@@ -278,6 +287,7 @@ class PageVisit(Base):
         Index("idx_pagevisit_timestamp", "timestamp"),
         Index("idx_pagevisit_ip", "ip_address"),
         Index("idx_pagevisit_author", "author_id"),
+        Index("idx_pagevisit_ts_ip", "timestamp", "ip_address"),
     )
 
 

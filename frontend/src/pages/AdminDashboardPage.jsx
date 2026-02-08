@@ -1,12 +1,22 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useQueryClient } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
 import {
   BarChart3, Bot, Eye, Globe, LogOut, RefreshCw, Play,
   Users, Calendar, TrendingUp, Activity, Plus, Trash2, Download,
 } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
-import api from '../api/client'
+import {
+  useAdminAnalytics,
+  useAdminCrawlStatus,
+  useAdminCrawlTargets,
+  useStartCrawl,
+  useAddCrawlTarget,
+  useDeleteCrawlTarget,
+  useInitCrawlTargets,
+  queryKeys,
+} from '../hooks/queries'
 
 // ---------------------------------------------------------------------------
 // Status badge component
@@ -165,41 +175,25 @@ function AnalyticsTab({ data }) {
 // ---------------------------------------------------------------------------
 // Crawl Tab
 // ---------------------------------------------------------------------------
-function CrawlTab({ data, onRefresh, onStart, starting }) {
-  const [targets, setTargets] = useState(null)
+function CrawlTab({ data, onRefresh, onStart, starting, targets, addTarget, deleteTarget, importDefaults }) {
   const [newId, setNewId] = useState('')
   const [newName, setNewName] = useState('')
-  const [adding, setAdding] = useState(false)
-  const [importing, setImporting] = useState(false)
-
-  const fetchTargets = useCallback(async () => {
-    try { setTargets(await api.getCrawlTargets()) } catch { /* ignore */ }
-  }, [])
-
-  useEffect(() => { fetchTargets() }, [fetchTargets])
 
   const handleAddTarget = async (e) => {
     e.preventDefault()
     if (!newId.trim() || !newName.trim()) return
-    setAdding(true)
-    try {
-      const res = await api.addCrawlTarget(newId.trim(), newName.trim())
-      if (res.ok) { setNewId(''); setNewName(''); fetchTargets() }
-    } catch { /* ignore */ }
-    setAdding(false)
+    addTarget.mutate(
+      { institutionId: newId.trim(), institutionName: newName.trim() },
+      { onSuccess: (res) => { if (res.ok) { setNewId(''); setNewName('') } } }
+    )
   }
 
-  const handleDeleteTarget = async (institutionId) => {
-    try {
-      await api.deleteCrawlTarget(institutionId)
-      fetchTargets()
-    } catch { /* ignore */ }
+  const handleDeleteTarget = (institutionId) => {
+    deleteTarget.mutate(institutionId)
   }
 
-  const handleImportDefaults = async () => {
-    setImporting(true)
-    try { await api.initCrawlTargets(); fetchTargets() } catch { /* ignore */ }
-    setImporting(false)
+  const handleImportDefaults = () => {
+    importDefaults.mutate()
   }
 
   if (!data) return <p className="text-muted-foreground py-8 text-center">Loading crawl status...</p>
@@ -245,7 +239,7 @@ function CrawlTab({ data, onRefresh, onStart, starting }) {
               />
               <button
                 type="submit"
-                disabled={adding || !newId.trim() || !newName.trim()}
+                disabled={addTarget.isPending || !newId.trim() || !newName.trim()}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary text-primary-foreground font-medium hover:bg-primary/90 disabled:opacity-50 transition text-sm"
               >
                 <Plus className="w-3.5 h-3.5" />
@@ -254,11 +248,11 @@ function CrawlTab({ data, onRefresh, onStart, starting }) {
             </form>
             <button
               onClick={handleImportDefaults}
-              disabled={importing}
+              disabled={importDefaults.isPending}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border bg-card hover:bg-muted transition text-sm"
             >
               <Download className="w-3.5 h-3.5" />
-              {importing ? 'Importing...' : 'Import Defaults'}
+              {importDefaults.isPending ? 'Importing...' : 'Import Defaults'}
             </button>
           </div>
 
@@ -352,41 +346,35 @@ function Section({ title, children }) {
 export default function AdminDashboardPage() {
   const { isAuthenticated, logout } = useAuth()
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
   const [tab, setTab] = useState('analytics')
-  const [analytics, setAnalytics] = useState(null)
-  const [crawlData, setCrawlData] = useState(null)
-  const [starting, setStarting] = useState(false)
 
-  useEffect(() => {
-    if (!isAuthenticated) navigate('/admin/login', { replace: true })
-  }, [isAuthenticated, navigate])
+  const isAnalyticsTab = tab === 'analytics'
+  const isCrawlTab = tab === 'crawl'
 
-  const fetchAnalytics = useCallback(async () => {
-    try { setAnalytics(await api.getAdminAnalytics()) } catch { /* ignore */ }
-  }, [])
+  const { data: analytics } = useAdminAnalytics(30, { enabled: isAuthenticated && isAnalyticsTab })
+  const { data: crawlData } = useAdminCrawlStatus({ enabled: isAuthenticated && isCrawlTab })
+  const { data: targets } = useAdminCrawlTargets({ enabled: isAuthenticated && isCrawlTab })
 
-  const fetchCrawl = useCallback(async () => {
-    try { setCrawlData(await api.getAdminCrawlStatus()) } catch { /* ignore */ }
-  }, [])
+  const startCrawl = useStartCrawl()
+  const addTarget = useAddCrawlTarget()
+  const deleteTarget = useDeleteCrawlTarget()
+  const importDefaults = useInitCrawlTargets()
 
-  useEffect(() => {
-    if (!isAuthenticated) return
-    if (tab === 'analytics') fetchAnalytics()
-    else fetchCrawl()
-  }, [isAuthenticated, tab, fetchAnalytics, fetchCrawl])
+  const handleStart = () => {
+    startCrawl.mutate()
+  }
 
-  const handleStart = async () => {
-    setStarting(true)
-    try {
-      await api.triggerAdminCrawl()
-      setTimeout(fetchCrawl, 2000)
-    } catch { /* ignore */ }
-    setStarting(false)
+  const handleRefreshCrawl = () => {
+    queryClient.invalidateQueries({ queryKey: queryKeys.adminCrawlStatus })
   }
 
   const handleLogout = () => { logout(); navigate('/admin/login') }
 
-  if (!isAuthenticated) return null
+  if (!isAuthenticated) {
+    navigate('/admin/login', { replace: true })
+    return null
+  }
 
   const tabs = [
     { id: 'analytics', label: 'Visitor Analytics', icon: BarChart3 },
@@ -436,7 +424,16 @@ export default function AdminDashboardPage() {
       {tab === 'analytics' ? (
         <AnalyticsTab data={analytics} />
       ) : (
-        <CrawlTab data={crawlData} onRefresh={fetchCrawl} onStart={handleStart} starting={starting} />
+        <CrawlTab
+          data={crawlData}
+          onRefresh={handleRefreshCrawl}
+          onStart={handleStart}
+          starting={startCrawl.isPending}
+          targets={targets}
+          addTarget={addTarget}
+          deleteTarget={deleteTarget}
+          importDefaults={importDefaults}
+        />
       )}
     </motion.div>
   )

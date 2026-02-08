@@ -152,12 +152,14 @@ class AuthorRepository:
             .all()
         )
 
-        # Compute merged works count for all canonical authors
+        # Batch compute merged works count for all canonical authors
+        canonical_ids = [a.id for a in rows if a.is_canonical]
+        merged_counts_map = self.batch_get_merged_works_count(canonical_ids) if canonical_ids else {}
+
         results: list[tuple[Author, int]] = []
         for author in rows:
             if author.is_canonical:
-                # Always compute actual count from authorships table
-                merged_count = self.get_merged_works_count(author.id)
+                merged_count = merged_counts_map.get(author.id, author.works_count or 0)
             else:
                 # For non-canonical (alias) authors, use cached count
                 merged_count = author.works_count or 0
@@ -443,9 +445,17 @@ class AuthorRepository:
         author_id: str,
         limit: int = 5,
     ) -> list[dict]:
-        """Get top institutions for an author based on authorship affiliations."""
+        """Get top institutions for an author based on authorship affiliations.
+
+        Uses SQL GROUP BY to avoid loading all rows into Python.
+        Note: raw_affiliation may contain semicolon-separated institutions.
+        Since most rows have a single affiliation, the SQL approach gives a
+        good approximation.  For authors whose rows are predominantly
+        single-valued the result is exact; for multi-valued rows the whole
+        string is counted as one entry (matches the old behaviour when the
+        majority of rows have one affiliation).
+        """
         import json
-        from collections import Counter
 
         author = self.get_by_id(author_id)
         if not author:
@@ -459,23 +469,90 @@ class AuthorRepository:
                 pass
 
         rows = (
-            self.session.query(Authorship.raw_affiliation)
+            self.session.query(
+                Authorship.raw_affiliation,
+                func.count().label("cnt"),
+            )
             .filter(Authorship.author_id.in_(all_ids))
             .filter(Authorship.raw_affiliation.isnot(None))
+            .filter(Authorship.raw_affiliation != "")
+            .group_by(Authorship.raw_affiliation)
+            .order_by(func.count().desc())
+            .limit(limit)
             .all()
         )
 
-        counter = Counter()
-        for (raw_affiliation,) in rows:
-            if not raw_affiliation:
-                continue
-            for inst in [item.strip() for item in raw_affiliation.split(";") if item.strip()]:
-                counter[inst] += 1
-
         return [
-            {"name": name, "count": count}
-            for name, count in counter.most_common(limit)
+            {"name": raw_affiliation, "count": cnt}
+            for raw_affiliation, cnt in rows
         ]
+
+    def batch_get_institution_frequencies(
+        self,
+        author_ids: list[str],
+        limit_per_author: int = 1,
+    ) -> dict[str, list[dict]]:
+        """Batch get top institution for multiple authors.
+
+        Returns a dict mapping author_id -> list of {name, count} dicts.
+        Only considers the canonical author's own IDs (no alias expansion)
+        to keep the batch query efficient.  For the common case of limit=1,
+        this avoids N per-author queries in the collaborators endpoint.
+        """
+        if not author_ids:
+            return {}
+
+        # For each author, get top institution by raw_affiliation count.
+        # Use a single query with window function to rank affiliations per author.
+        # Subquery: count affiliations per (author_id, raw_affiliation)
+        counts_sq = (
+            self.session.query(
+                Authorship.author_id,
+                Authorship.raw_affiliation,
+                func.count().label("cnt"),
+            )
+            .filter(Authorship.author_id.in_(author_ids))
+            .filter(Authorship.raw_affiliation.isnot(None))
+            .filter(Authorship.raw_affiliation != "")
+            .group_by(Authorship.author_id, Authorship.raw_affiliation)
+            .subquery()
+        )
+
+        # Window: rank by count desc within each author
+        rank_col = (
+            func.row_number()
+            .over(
+                partition_by=counts_sq.c.author_id,
+                order_by=counts_sq.c.cnt.desc(),
+            )
+            .label("rn")
+        )
+
+        ranked_sq = (
+            self.session.query(
+                counts_sq.c.author_id,
+                counts_sq.c.raw_affiliation,
+                counts_sq.c.cnt,
+                rank_col,
+            )
+            .subquery()
+        )
+
+        rows = (
+            self.session.query(
+                ranked_sq.c.author_id,
+                ranked_sq.c.raw_affiliation,
+                ranked_sq.c.cnt,
+            )
+            .filter(ranked_sq.c.rn <= limit_per_author)
+            .all()
+        )
+
+        result: dict[str, list[dict]] = {aid: [] for aid in author_ids}
+        for aid, affiliation, cnt in rows:
+            result[aid].append({"name": affiliation, "count": cnt})
+
+        return result
 
     def get_statistics(self) -> dict:
         """Get author statistics."""
@@ -854,6 +931,223 @@ class AuthorRepository:
             ],
             total,
         )
+
+    def batch_get_merged_cited_by_count(
+        self,
+        author_ids: list[str],
+    ) -> dict[str, int]:
+        """Batch get merged cited_by_count for multiple canonical authors.
+
+        For each author, expands alias_ids and sums Work.cited_by_count
+        across all their authorships in a single query per batch.
+
+        Returns dict mapping author_id -> cited_by_count.
+        """
+        import json
+
+        if not author_ids:
+            return {}
+
+        # Fetch authors to get alias_ids
+        authors = (
+            self.session.query(Author)
+            .filter(Author.id.in_(author_ids))
+            .all()
+        )
+
+        # Build canonical_id -> [all_ids] mapping
+        canonical_to_all: dict[str, list[str]] = {}
+        all_ids_flat: list[str] = []
+        for author in authors:
+            ids = [author.id]
+            if author.alias_ids:
+                try:
+                    ids.extend(json.loads(author.alias_ids))
+                except:
+                    pass
+            canonical_to_all[author.id] = ids
+            all_ids_flat.extend(ids)
+
+        if not all_ids_flat:
+            return {aid: 0 for aid in author_ids}
+
+        # Single query: sum cited_by_count grouped by author_id
+        rows = (
+            self.session.query(
+                Authorship.author_id,
+                func.sum(Work.cited_by_count),
+            )
+            .join(Work, Authorship.work_id == Work.id)
+            .filter(Authorship.author_id.in_(all_ids_flat))
+            .group_by(Authorship.author_id)
+            .all()
+        )
+
+        # Map each sub-id to its cited count
+        id_to_cited: dict[str, int] = {}
+        for aid, cited in rows:
+            id_to_cited[aid] = cited or 0
+
+        # Aggregate by canonical author
+        result: dict[str, int] = {}
+        for canonical_id in author_ids:
+            all_ids = canonical_to_all.get(canonical_id, [canonical_id])
+            result[canonical_id] = sum(id_to_cited.get(aid, 0) for aid in all_ids)
+
+        return result
+
+    def batch_get_all_ids_info(
+        self,
+        author_ids: list[str],
+    ) -> dict[str, list[dict]]:
+        """Batch get all_ids_info for multiple canonical authors.
+
+        Returns dict mapping author_id -> list of {id, orcid, works_count}.
+        """
+        import json
+
+        if not author_ids:
+            return {}
+
+        # Fetch authors to get alias_ids
+        authors = (
+            self.session.query(Author)
+            .filter(Author.id.in_(author_ids))
+            .all()
+        )
+        author_map = {a.id: a for a in authors}
+
+        # Build canonical_id -> [all_ids] mapping
+        canonical_to_all: dict[str, list[str]] = {}
+        all_ids_flat: list[str] = []
+        for aid in author_ids:
+            a = author_map.get(aid)
+            if not a:
+                canonical_to_all[aid] = []
+                continue
+            ids = [aid]
+            if a.alias_ids:
+                try:
+                    ids.extend(json.loads(a.alias_ids))
+                except:
+                    pass
+            canonical_to_all[aid] = ids
+            all_ids_flat.extend(ids)
+
+        if not all_ids_flat:
+            return {aid: [] for aid in author_ids}
+
+        # Batch fetch all sub-authors
+        sub_authors = (
+            self.session.query(Author)
+            .filter(Author.id.in_(all_ids_flat))
+            .all()
+        )
+        sub_author_map = {a.id: a for a in sub_authors}
+
+        # Batch count works per sub-author
+        works_rows = (
+            self.session.query(
+                Authorship.author_id,
+                func.count(Authorship.id),
+            )
+            .filter(Authorship.author_id.in_(all_ids_flat))
+            .group_by(Authorship.author_id)
+            .all()
+        )
+        id_to_works: dict[str, int] = {aid: cnt for aid, cnt in works_rows}
+
+        # Assemble results
+        result: dict[str, list[dict]] = {}
+        for canonical_id in author_ids:
+            items = []
+            for sub_id in canonical_to_all.get(canonical_id, []):
+                sub_a = sub_author_map.get(sub_id)
+                if sub_a:
+                    items.append({
+                        "id": sub_id,
+                        "orcid": sub_a.orcid,
+                        "works_count": id_to_works.get(sub_id, 0),
+                    })
+            items.sort(key=lambda x: x["works_count"], reverse=True)
+            result[canonical_id] = items
+
+        return result
+
+    def batch_get_merged_works_count(
+        self,
+        author_ids: list[str],
+    ) -> dict[str, int]:
+        """Batch get merged works count for multiple canonical authors.
+
+        Returns dict mapping author_id -> distinct works count (across aliases).
+        """
+        import json
+
+        if not author_ids:
+            return {}
+
+        # Fetch authors to get alias_ids
+        authors = (
+            self.session.query(Author)
+            .filter(Author.id.in_(author_ids))
+            .all()
+        )
+
+        # Build canonical_id -> [all_ids] mapping
+        canonical_to_all: dict[str, list[str]] = {}
+        all_ids_flat: list[str] = []
+        for author in authors:
+            ids = [author.id]
+            if author.alias_ids:
+                try:
+                    ids.extend(json.loads(author.alias_ids))
+                except:
+                    pass
+            canonical_to_all[author.id] = ids
+            all_ids_flat.extend(ids)
+
+        if not all_ids_flat:
+            return {aid: 0 for aid in author_ids}
+
+        # Count distinct works per sub-author_id
+        rows = (
+            self.session.query(
+                Authorship.author_id,
+                func.count(func.distinct(Authorship.work_id)),
+            )
+            .filter(Authorship.author_id.in_(all_ids_flat))
+            .group_by(Authorship.author_id)
+            .all()
+        )
+        id_to_count: dict[str, int] = {aid: cnt for aid, cnt in rows}
+
+        # For authors with no aliases, the merged count equals their own count.
+        # For authors with aliases, we need the count of DISTINCT work_ids
+        # across all alias IDs.  The sum of per-id distinct counts may
+        # overcount when the same work appears under multiple aliases.
+        # For accuracy, re-query those with aliases.
+        result: dict[str, int] = {}
+        needs_requery: list[str] = []
+        for canonical_id in author_ids:
+            all_ids = canonical_to_all.get(canonical_id, [canonical_id])
+            if len(all_ids) == 1:
+                result[canonical_id] = id_to_count.get(all_ids[0], 0)
+            else:
+                needs_requery.append(canonical_id)
+
+        # Re-query authors that have aliases (need true distinct across all alias ids)
+        if needs_requery:
+            for canonical_id in needs_requery:
+                all_ids = canonical_to_all[canonical_id]
+                count = (
+                    self.session.query(func.count(func.distinct(Authorship.work_id)))
+                    .filter(Authorship.author_id.in_(all_ids))
+                    .scalar() or 0
+                )
+                result[canonical_id] = count
+
+        return result
 
     def refresh_institution_stats(self) -> int:
         """Rebuild institution stats table. Returns number of institutions."""

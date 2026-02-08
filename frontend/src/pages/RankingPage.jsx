@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import api from '../api/client';
+import { useInstitutions, useInstitutionRanking } from '../hooks/queries';
 import ResearchFieldsBadges from '../components/ResearchFieldsBadges';
 import { Building2, ChevronRight, GraduationCap, FileText, Quote, Loader2, AlertCircle, ExternalLink } from 'lucide-react';
 import { cn } from '../lib/utils';
@@ -8,68 +8,30 @@ import { motion } from 'framer-motion';
 
 function RankingPage() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const [institutions, setInstitutions] = useState([]);
-  const [ranking, setRanking] = useState(null);
-  const [initialLoading, setInitialLoading] = useState(true);
-  const [rankingLoading, setRankingLoading] = useState(false);
-  const [institutionsLoading, setInstitutionsLoading] = useState(false);
   const [institutionQuery, setInstitutionQuery] = useState('');
-  const [error, setError] = useState(null);
+  const [debouncedQuery, setDebouncedQuery] = useState('');
 
   const selectedInstitutionId = searchParams.get('institution_id');
 
+  // Debounce the institution query
   useEffect(() => {
     const handle = setTimeout(() => {
-      loadInstitutions(institutionQuery);
+      setDebouncedQuery(institutionQuery);
     }, 300);
     return () => clearTimeout(handle);
   }, [institutionQuery]);
 
+  const { data: institutions = [], isLoading: institutionsLoading, isFetched: institutionsFetched } = useInstitutions(debouncedQuery);
+  const { data: ranking, isLoading: rankingLoading, error: rankingError } = useInstitutionRanking(selectedInstitutionId);
+
+  // Auto-select first institution if none selected and list available
   useEffect(() => {
-    if (selectedInstitutionId) {
-      loadRanking(selectedInstitutionId);
-    } else {
-      setRanking(null);
+    if (!selectedInstitutionId && institutions.length > 0) {
+      setSearchParams({ institution_id: institutions[0].id });
     }
-  }, [selectedInstitutionId]);
+  }, [institutions, selectedInstitutionId, setSearchParams]);
 
-  const loadInstitutions = async (query = '') => {
-    setInstitutionsLoading(true);
-    try {
-      const data = await api.getInstitutions({
-        query: query || null,
-        limit: 300,
-        offset: 0,
-      });
-      setInstitutions(data.institutions || []);
-      // Auto-select first institution if none selected and list available
-      if (!selectedInstitutionId && data.institutions?.length > 0) {
-        setSearchParams({ institution_id: data.institutions[0].id });
-      }
-    } catch (err) {
-      console.error('Failed to load institutions:', err);
-    } finally {
-      setInstitutionsLoading(false);
-      setInitialLoading(false);
-    }
-  };
-
-  const loadRanking = async (institutionId) => {
-    setRankingLoading(true);
-    setError(null);
-
-    try {
-      const data = await api.getInstitutionRanking(
-        institutionId, null, 100, 0, null, null, false
-      );
-      setRanking(data);
-    } catch (err) {
-      console.error('Failed to load ranking:', err);
-      setError('加载排名数据失败，请稍后重试');
-    } finally {
-      setRankingLoading(false);
-    }
-  };
+  const initialLoading = !institutionsFetched && institutionsLoading;
 
   const handleInstitutionSelect = (institutionId) => {
     setSearchParams({ institution_id: institutionId });
@@ -149,10 +111,10 @@ function RankingPage() {
                 <Loader2 className="h-8 w-8 animate-spin mb-3 text-primary" />
                 <p>正在计算排名数据...</p>
               </div>
-            ) : error ? (
+            ) : rankingError ? (
               <div className="bg-destructive/10 border border-destructive/20 rounded-xl p-8 text-center text-destructive">
                 <AlertCircle className="h-10 w-10 mx-auto mb-4" />
-                <p className="font-medium">{error}</p>
+                <p className="font-medium">加载排名数据失败，请稍后重试</p>
               </div>
             ) : ranking ? (
               <motion.div

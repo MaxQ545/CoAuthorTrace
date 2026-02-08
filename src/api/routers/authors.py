@@ -290,17 +290,28 @@ async def search_authors(
         q, limit=limit, offset=offset, canonical_only=canonical_only, fuzzy=fuzzy
     )
 
+    # Batch fetch cited_by counts and all_ids_info to avoid N+1 queries
+    author_ids = [author.id for author, _ in authors_with_counts]
+    cited_by_map = repo.batch_get_merged_cited_by_count(author_ids)
+
+    all_ids_map = {}
+    if include_all_ids:
+        canonical_ids = [
+            author.id for author, _ in authors_with_counts if author.is_canonical
+        ]
+        all_ids_map = repo.batch_get_all_ids_info(canonical_ids)
+
     # Build responses with merged works count
     results = []
     for author, works_count in authors_with_counts:
 
-        # Compute merged cited_by_count
-        cited_by_count = repo._get_merged_cited_by_count_by_year(author.id)
+        # Use batch-fetched cited_by_count
+        cited_by_count = cited_by_map.get(author.id, 0)
 
-        # Optionally include all IDs info
+        # Use batch-fetched all IDs info
         all_ids_info = None
         if include_all_ids and author.is_canonical:
-            all_ids_data = repo.get_all_ids_info(author.id)
+            all_ids_data = all_ids_map.get(author.id, [])
             all_ids_info = [AuthorIdInfo(**info) for info in all_ids_data]
 
         # Get research fields from cache (don't compute to keep search fast)
@@ -601,10 +612,13 @@ async def get_top_relations(
 
     relations = scorer.get_top_relations(author_id, k=k, score_type=score_type)
 
-    # Get collaboration counts
+    # Batch fetch collaboration counts to avoid N+1 queries
+    other_ids = [other_id for other_id, _, _ in relations]
+    collab_map = collab_repo.batch_get_collaborations(author_id, other_ids)
+
     result_relations = []
     for other_id, other_name, score in relations:
-        collab = collab_repo.get_collaboration(author_id, other_id)
+        collab = collab_map.get(other_id)
         collab_count = collab.collaboration_count if collab else None
 
         result_relations.append(RelatedAuthor(
@@ -706,12 +720,15 @@ async def get_collaborators(
         author_id, limit=limit, from_year=from_year, to_year=to_year
     )
 
-    # Compute primary institution for each collaborator
+    # Batch fetch primary institutions to avoid N+1 queries
+    collab_ids = [collab.id for collab, _ in collaborators]
+    institution_map = repo.batch_get_institution_frequencies(collab_ids, limit_per_author=1)
+
     collaborators_with_institution = []
     for collab, count in collaborators:
-        institution_freqs = repo.get_institution_frequencies(collab.id, limit=1)
+        inst_freqs = institution_map.get(collab.id, [])
         primary_institution_name = (
-            institution_freqs[0]["name"] if institution_freqs else collab.last_known_institution_name
+            inst_freqs[0]["name"] if inst_freqs else collab.last_known_institution_name
         )
         collaborators_with_institution.append({
             "id": collab.id,

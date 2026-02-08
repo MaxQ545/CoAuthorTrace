@@ -1,6 +1,5 @@
-import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import client from '../api/client';
+import { useSystemStats } from '../hooks/queries';
 import SearchBox from '../components/SearchBox';
 import StatsCard from '../components/StatsCard';
 import { motion } from 'framer-motion';
@@ -8,32 +7,7 @@ import { ArrowRight, Users, BookOpen, Share2, Activity, Zap, Network, Search, Lo
 
 function HomePage() {
   const navigate = useNavigate();
-  const [stats, setStats] = useState(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    async function fetchStats() {
-      try {
-        const data = await client.getSystemStats();
-        // Map old structure to new structure if needed, or just use as is
-        // The API returns: { status: "ok", database: { total_works, ... }, crawl: {...} }
-        // We need to flatten it slightly for easy usage
-        setStats({
-          works_count: data.database.total_works,
-          authors_count: data.database.total_authors,
-          collaborations_count: data.database.total_collaborations,
-          total_relationship_scores: data.database.total_relationship_scores,
-          last_crawl_date: data.crawl.last_crawl_date,
-          status: data.status
-        });
-      } catch (error) {
-        console.error('Failed to fetch stats:', error);
-      } finally {
-        setLoading(false);
-      }
-    }
-    fetchStats();
-  }, []);
+  const { data: stats, isLoading: loading } = useSystemStats();
 
   const handleSearch = (query) => {
     navigate(`/authors/search?q=${encodeURIComponent(query)}`);

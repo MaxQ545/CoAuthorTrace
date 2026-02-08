@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import api from '../api/client';
+import { useCoAuthoredPapers } from '../hooks/queries';
 import { useTimeFilter } from '../contexts/TimeFilterContext';
 import { X, Calendar, BookOpen, ExternalLink, ArrowUpDown, Lock, Unlock, Loader2, Quote } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -14,10 +14,6 @@ function CoAuthoredPapersModal({
   collaboratorName
 }) {
   const { timeRange } = useTimeFilter();
-  const [papers, setPapers] = useState([]);
-  const [total, setTotal] = useState(0);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
 
   // Pagination and sorting state
   const [offset, setOffset] = useState(0);
@@ -25,11 +21,19 @@ function CoAuthoredPapersModal({
   const [sortOrder, setSortOrder] = useState('desc');
   const limit = 10; // Smaller limit for modal
 
-  useEffect(() => {
-    if (isOpen && authorId && collaboratorId) {
-      loadPapers();
-    }
-  }, [isOpen, authorId, collaboratorId, offset, sortBy, sortOrder, timeRange.fromYear, timeRange.toYear]);
+  const { data, isLoading: loading, error } = useCoAuthoredPapers(
+    authorId,
+    collaboratorId,
+    limit,
+    offset,
+    sortBy,
+    sortOrder,
+    timeRange.fromYear,
+    timeRange.toYear
+  );
+
+  const papers = data?.papers || [];
+  const total = data?.total || 0;
 
   // Reset when modal opens with new collaborator
   useEffect(() => {
@@ -37,31 +41,6 @@ function CoAuthoredPapersModal({
       setOffset(0);
     }
   }, [isOpen, collaboratorId]);
-
-  const loadPapers = async () => {
-    setLoading(true);
-    setError(null);
-
-    try {
-      const data = await api.getCoAuthoredPapers(
-        authorId,
-        collaboratorId,
-        limit,
-        offset,
-        sortBy,
-        sortOrder,
-        timeRange.fromYear,
-        timeRange.toYear
-      );
-      setPapers(data.papers);
-      setTotal(data.total);
-    } catch (err) {
-      console.error('Failed to load co-authored papers:', err);
-      setError('无法加载论文列表');
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const handleSortChange = (newSortBy) => {
     if (newSortBy === sortBy) {
@@ -153,8 +132,7 @@ function CoAuthoredPapersModal({
                 </div>
               ) : error ? (
                 <div className="flex flex-col items-center justify-center h-48 text-destructive">
-                  <p className="font-medium mb-2">{error}</p>
-                  <button onClick={loadPapers} className="text-sm underline hover:text-destructive/80">重试</button>
+                  <p className="font-medium mb-2">无法加载论文列表</p>
                 </div>
               ) : papers.length === 0 ? (
                 <div className="text-center py-12 text-muted-foreground">

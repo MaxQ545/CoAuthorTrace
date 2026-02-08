@@ -12,9 +12,6 @@ from sqlalchemy.orm import Session
 from config.settings import settings
 from src.database.models import (
     CrawlState,
-    Author,
-    Work,
-    Authorship,
     get_session,
     session_scope,
 )
@@ -24,6 +21,7 @@ from src.database.repositories import (
     CollaborationRepository,
 )
 from src.crawler.openalex_client import OpenAlexClient, parse_work
+from src.crawler.batch_processor import BatchProcessor
 from src.analysis.weight_calculator import WeightCalculator
 
 logger = logging.getLogger(__name__)
@@ -157,10 +155,17 @@ class IncrementalCrawler:
             work_repo = WorkRepository(session)
             collab_repo = CollaborationRepository(session)
 
+            # Create shared batch processor
+            processor = BatchProcessor(
+                session, author_repo, work_repo, collab_repo, self.weight_calculator,
+            )
+
             # Iterate through works
             batch_works = []
             batch_authors = []
             batch_authorships = []
+            # Collect parsed works for batch existence check
+            pending_parsed = []
 
             async for work_data in self.client.iter_works(
                 institution_ids=self.institution_ids,
@@ -175,25 +180,23 @@ class IncrementalCrawler:
                         preferred_institution_ids=self.institution_ids,
                     )
 
-                    # Check if work already exists
-                    if not work_repo.exists(work_dict["id"]):
-                        batch_works.append(work_dict)
-                        batch_authors.extend(authors)
-                        batch_authorships.extend(authorships)
-                        stats["works_new"] += 1
-
+                    pending_parsed.append((work_dict, authors, authorships))
                     stats["works_processed"] += 1
 
                     # Process batch
-                    if len(batch_works) >= batch_size:
-                        new_authors, new_authorships, new_collabs = await self._process_batch(
-                            session,
-                            author_repo,
-                            work_repo,
-                            collab_repo,
-                            batch_works,
-                            batch_authors,
-                            batch_authorships,
+                    if len(pending_parsed) >= batch_size:
+                        # Batch existence check
+                        all_ids = [w["id"] for w, _, _ in pending_parsed]
+                        existing_ids = work_repo.exists_batch(all_ids)
+                        for w, a, au in pending_parsed:
+                            if w["id"] not in existing_ids:
+                                batch_works.append(w)
+                                batch_authors.extend(a)
+                                batch_authorships.extend(au)
+                                stats["works_new"] += 1
+
+                        new_authors, new_authorships, new_collabs = await processor.process(
+                            batch_works, batch_authors, batch_authorships,
                         )
                         stats["authors_new"] += new_authors
                         stats["authorships_new"] += new_authorships
@@ -202,6 +205,7 @@ class IncrementalCrawler:
                         batch_works = []
                         batch_authors = []
                         batch_authorships = []
+                        pending_parsed = []
 
                         logger.info(f"Processed {stats['works_processed']} works...")
 
@@ -210,15 +214,19 @@ class IncrementalCrawler:
                     stats["errors"].append(str(e))
 
             # Process remaining batch
+            if pending_parsed:
+                all_ids = [w["id"] for w, _, _ in pending_parsed]
+                existing_ids = work_repo.exists_batch(all_ids)
+                for w, a, au in pending_parsed:
+                    if w["id"] not in existing_ids:
+                        batch_works.append(w)
+                        batch_authors.extend(a)
+                        batch_authorships.extend(au)
+                        stats["works_new"] += 1
+
             if batch_works:
-                new_authors, new_authorships, new_collabs = await self._process_batch(
-                    session,
-                    author_repo,
-                    work_repo,
-                    collab_repo,
-                    batch_works,
-                    batch_authors,
-                    batch_authorships,
+                new_authors, new_authorships, new_collabs = await processor.process(
+                    batch_works, batch_authors, batch_authorships,
                 )
                 stats["authors_new"] += new_authors
                 stats["authorships_new"] += new_authorships
@@ -251,129 +259,6 @@ class IncrementalCrawler:
             session.close()
 
         return stats
-
-    async def _process_batch(
-        self,
-        session: Session,
-        author_repo: AuthorRepository,
-        work_repo: WorkRepository,
-        collab_repo: CollaborationRepository,
-        works: list[dict],
-        authors: list[dict],
-        authorships: list[dict],
-    ) -> tuple[int, int, int]:
-        """
-        Process a batch of works, authors, and authorships.
-
-        Returns:
-            Tuple of (new_authors, new_authorships, new_collaborations)
-        """
-        new_authors = 0
-        new_authorships = 0
-        new_collaborations = 0
-
-        # Insert authors
-        for author_data in authors:
-            author_id = author_data["id"]
-            existing = author_repo.get_by_id(author_id)
-            if not existing:
-                author = Author(**author_data)
-                session.add(author)
-                new_authors += 1
-            else:
-                # Refresh core fields when new data is present
-                if author_data.get("orcid"):
-                    existing.orcid = author_data["orcid"]
-                if author_data.get("last_known_institution_id") or author_data.get("last_known_institution_name"):
-                    existing.last_known_institution_id = author_data.get("last_known_institution_id")
-                    existing.last_known_institution_name = author_data.get("last_known_institution_name")
-                # Update stats if available
-                if author_data.get("works_count"):
-                    existing.works_count = author_data["works_count"]
-                if author_data.get("cited_by_count"):
-                    existing.cited_by_count = author_data["cited_by_count"]
-
-        session.flush()
-
-        # Insert works (skip duplicates)
-        for work_data in works:
-            if not work_repo.exists(work_data["id"]):
-                work = Work(**work_data)
-                session.add(work)
-
-        try:
-            session.flush()
-        except Exception as e:
-            # Handle any remaining duplicates
-            session.rollback()
-            logger.warning(f"Batch flush error, retrying one by one: {e}")
-            for work_data in works:
-                try:
-                    if not work_repo.exists(work_data["id"]):
-                        work = Work(**work_data)
-                        session.add(work)
-                        session.flush()
-                except Exception:
-                    session.rollback()
-
-        # Insert authorships and build collaborations
-        work_authorships = {}  # work_id -> list of authorships
-
-        for auth_data in authorships:
-            # Check if authorship exists
-            existing = (
-                session.query(Authorship)
-                .filter(
-                    Authorship.author_id == auth_data["author_id"],
-                    Authorship.work_id == auth_data["work_id"],
-                )
-                .first()
-            )
-
-            if not existing:
-                authorship = Authorship(**auth_data)
-                session.add(authorship)
-                new_authorships += 1
-
-                # Group by work for collaboration building
-                work_id = auth_data["work_id"]
-                if work_id not in work_authorships:
-                    work_authorships[work_id] = []
-                work_authorships[work_id].append(auth_data)
-
-        session.flush()
-
-        # Build collaboration edges
-        for work_id, work_auths in work_authorships.items():
-            if len(work_auths) < 2:
-                continue
-
-            # Get publication date
-            work = work_repo.get_by_id(work_id)
-            pub_date = work.publication_date if work else None
-
-            # Create edges between all author pairs
-            for i, auth1 in enumerate(work_auths):
-                for auth2 in work_auths[i + 1:]:
-                    weight = self.weight_calculator.calculate_weight(
-                        position_1=auth1["author_position"],
-                        position_2=auth2["author_position"],
-                        is_corresponding_1=auth1.get("is_corresponding", False),
-                        is_corresponding_2=auth2.get("is_corresponding", False),
-                        total_authors=len(work_auths),
-                        publication_date=pub_date,
-                    )
-                    collab_repo.create_or_update(
-                        auth1["author_id"],
-                        auth2["author_id"],
-                        weight,
-                        pub_date,
-                    )
-                    new_collaborations += 1
-
-        session.commit()
-
-        return new_authors, new_authorships, new_collaborations
 
     def get_status(self) -> dict:
         """Get current crawl status."""

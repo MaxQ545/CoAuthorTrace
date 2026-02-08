@@ -96,6 +96,39 @@ class CollaborationRepository:
             .all()
         )
 
+    def batch_get_collaborations(
+        self,
+        author_id: str,
+        other_ids: list[str],
+    ) -> dict[str, Optional[Collaboration]]:
+        """Batch get collaborations between one author and multiple others.
+
+        Returns dict mapping other_id -> Collaboration (or None).
+        Uses a single query instead of N individual lookups.
+        """
+        if not other_ids:
+            return {}
+
+        # Fetch all collaborations for this author in one query
+        all_collabs = (
+            self.session.query(Collaboration)
+            .filter(
+                or_(
+                    Collaboration.author_id_1 == author_id,
+                    Collaboration.author_id_2 == author_id,
+                )
+            )
+            .all()
+        )
+
+        # Build lookup: other_id -> Collaboration
+        collab_map: dict[str, Collaboration] = {}
+        for c in all_collabs:
+            other = c.author_id_2 if c.author_id_1 == author_id else c.author_id_1
+            collab_map[other] = c
+
+        return {oid: collab_map.get(oid) for oid in other_ids}
+
     def rebuild_collaborations_for_work(
         self,
         work_id: str,

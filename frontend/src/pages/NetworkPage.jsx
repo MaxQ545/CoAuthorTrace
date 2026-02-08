@@ -1,5 +1,6 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import { useAuthor, useAuthorCollaborators } from '../hooks/queries';
 import api from '../api/client';
 import NetworkGraph from '../components/NetworkGraph';
 import SearchBox from '../components/SearchBox';
@@ -12,20 +13,51 @@ function NetworkPage() {
   const { authorId } = useParams();
   const navigate = useNavigate();
   const { timeRange } = useTimeFilter();
-  const [author, setAuthor] = useState(null);
-  const [collaborators, setCollaborators] = useState([]);
-  const [nodes, setNodes] = useState([]);
-  const [edges, setEdges] = useState([]);
-  const [loading, setLoading] = useState(false);
   const [searchResults, setSearchResults] = useState([]);
   const [searching, setSearching] = useState(false);
   const searchRef = useRef(null);
 
-  useEffect(() => {
-    if (authorId) {
-      loadAuthorNetwork(authorId);
+  const { data: author, isLoading: authorLoading } = useAuthor(authorId);
+  const { data: collaborators = [], isLoading: collabLoading } = useAuthorCollaborators(
+    authorId, 50, timeRange.fromYear, timeRange.toYear
+  );
+
+  const loading = (authorLoading || collabLoading) && !!authorId;
+
+  // Build graph data from query results
+  const { nodes, edges } = useMemo(() => {
+    if (!author || collaborators.length === 0) return { nodes: [], edges: [] };
+
+    const graphNodes = [
+      {
+        id: author.id,
+        label: author.display_name,
+        papers: author.works_count,
+        citations: author.cited_by_count,
+      },
+    ];
+
+    const graphEdges = [];
+
+    for (const collab of collaborators) {
+      graphNodes.push({
+        id: collab.id,
+        label: collab.display_name,
+        papers: collab.works_count,
+        citations: collab.cited_by_count,
+        collabCount: collab.collaboration_count,
+      });
+
+      graphEdges.push({
+        from: author.id,
+        to: collab.id,
+        count: collab.collaboration_count,
+        weight: collab.collaboration_count,
+      });
     }
-  }, [authorId, timeRange.fromYear, timeRange.toYear]);
+
+    return { nodes: graphNodes, edges: graphEdges };
+  }, [author, collaborators]);
 
   // Close search results when clicking outside
   useEffect(() => {
@@ -39,55 +71,6 @@ function NetworkPage() {
       document.removeEventListener("mousedown", handleClickOutside);
     };
   }, [searchRef]);
-
-  const loadAuthorNetwork = async (id) => {
-    setLoading(true);
-    try {
-      const [authorData, collabData] = await Promise.all([
-        api.getAuthor(id),
-        api.getAuthorCollaborators(id, 50, timeRange.fromYear, timeRange.toYear),
-      ]);
-
-      setAuthor(authorData);
-      setCollaborators(collabData.collaborators || []);
-
-      // Build graph data
-      const graphNodes = [
-        {
-          id: authorData.id,
-          label: authorData.display_name,
-          papers: authorData.works_count,
-          citations: authorData.cited_by_count,
-        },
-      ];
-
-      const graphEdges = [];
-
-      for (const collab of collabData.collaborators || []) {
-        graphNodes.push({
-          id: collab.id,
-          label: collab.display_name,
-          papers: collab.works_count,
-          citations: collab.cited_by_count,
-          collabCount: collab.collaboration_count,
-        });
-
-        graphEdges.push({
-          from: authorData.id,
-          to: collab.id,
-          count: collab.collaboration_count,
-          weight: collab.collaboration_count,
-        });
-      }
-
-      setNodes(graphNodes);
-      setEdges(graphEdges);
-    } catch (error) {
-      console.error('Failed to load network:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const handleSearch = async (query) => {
     setSearching(true);

@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import api from '../api/client';
+import { useAuthor, useAuthorCollaborators, useNetworkMetrics } from '../hooks/queries';
 import AuthorCard from '../components/AuthorCard';
 import CoAuthoredPapersModal from '../components/CoAuthoredPapersModal';
 import ResearchFieldsBadges from '../components/ResearchFieldsBadges';
@@ -25,11 +25,15 @@ import { cn } from '../lib/utils';
 function AuthorPage() {
   const { authorId } = useParams();
   const { timeRange } = useTimeFilter();
-  const [author, setAuthor] = useState(null);
-  const [collaborators, setCollaborators] = useState([]);
-  const [metrics, setMetrics] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+
+  const { data: author, isLoading: authorLoading, error: authorError } = useAuthor(authorId);
+  const { data: collaborators = [], isLoading: collabLoading } = useAuthorCollaborators(
+    authorId, 30, timeRange.fromYear, timeRange.toYear
+  );
+  const { data: metrics } = useNetworkMetrics(authorId);
+
+  const loading = authorLoading || collabLoading;
+  const error = authorError ? '无法加载作者信息' : null;
 
   // Modal state for co-authored papers
   const [modalOpen, setModalOpen] = useState(false);
@@ -37,36 +41,6 @@ function AuthorPage() {
     id: null,
     name: null
   });
-
-  useEffect(() => {
-    loadAuthorData();
-  }, [authorId, timeRange.fromYear, timeRange.toYear]);
-
-  const loadAuthorData = async () => {
-    setLoading(true);
-    setError(null);
-    setMetrics(null);
-
-    try {
-      const [authorData, collabData] = await Promise.all([
-        api.getAuthor(authorId),
-        api.getAuthorCollaborators(authorId, 30, timeRange.fromYear, timeRange.toYear),
-      ]);
-
-      setAuthor(authorData);
-      setCollaborators(collabData.collaborators || []);
-      setLoading(false);
-
-      // Load metrics asynchronously (don't block page render)
-      api.getAuthorNetworkMetrics(authorId, true)
-        .then((metricsData) => setMetrics(metricsData.metrics))
-        .catch((e) => console.warn('Failed to load metrics:', e));
-    } catch (error) {
-      console.error('Failed to load author:', error);
-      setError('无法加载作者信息');
-      setLoading(false);
-    }
-  };
 
   const handleViewPapers = (collaboratorId, collaboratorName) => {
     setSelectedCollaborator({ id: collaboratorId, name: collaboratorName });

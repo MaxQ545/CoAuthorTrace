@@ -1,6 +1,5 @@
-import { useState, useEffect } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import client from '../api/client';
+import { useAuthorSearch } from '../hooks/queries';
 import SearchBox from '../components/SearchBox';
 import { motion } from 'framer-motion';
 import { User, Building2, FileText, Quote, Loader2, Search as SearchIcon } from 'lucide-react';
@@ -11,35 +10,9 @@ function AuthorSearchPage() {
   const navigate = useNavigate();
   const query = searchParams.get('q') || '';
 
-  const [results, setResults] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [total, setTotal] = useState(0);
-  const [error, setError] = useState(null);
-
-  useEffect(() => {
-    if (!query) {
-      setResults([]);
-      setTotal(0);
-      return;
-    }
-
-    async function search() {
-      setLoading(true);
-      setError(null);
-      try {
-        const data = await client.searchAuthors(query, 50, 0, true);
-        setResults(data.results || []);
-        setTotal(data.total || 0);
-      } catch (err) {
-        console.error('Search failed:', err);
-        setError('搜索失败，请稍后重试');
-      } finally {
-        setLoading(false);
-      }
-    }
-
-    search();
-  }, [query]);
+  const { data, isLoading: loading, error } = useAuthorSearch(query, 50, 0, true);
+  const results = data?.results || [];
+  const total = data?.total || 0;
 
   const handleSearch = (newQuery) => {
     navigate(`/authors/search?q=${encodeURIComponent(newQuery)}`);
@@ -86,7 +59,7 @@ function AuthorSearchPage() {
         {/* Error State */}
         {error && (
           <div className="bg-destructive/10 text-destructive p-4 rounded-lg text-center">
-            {error}
+            搜索失败，请稍后重试
           </div>
         )}
 
