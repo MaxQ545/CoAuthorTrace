@@ -3,13 +3,23 @@ const API_BASE = '/api/v1';
 class ApiClient {
   async request(endpoint, options = {}) {
     const url = `${API_BASE}${endpoint}`;
-    const response = await fetch(url, {
-      headers: {
-        'Content-Type': 'application/json',
-        ...options.headers,
-      },
-      ...options,
-    });
+    const headers = {
+      'Content-Type': 'application/json',
+      ...options.headers,
+    };
+
+    // Attach admin token for authenticated admin endpoints
+    const isAdminAuth = endpoint.startsWith('/admin/') &&
+      !endpoint.startsWith('/admin/login') &&
+      !endpoint.startsWith('/admin/track');
+    if (isAdminAuth) {
+      const token = sessionStorage.getItem('admin_token');
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+    }
+
+    const response = await fetch(url, { headers, ...options });
 
     if (!response.ok) {
       throw new Error(`API Error: ${response.status}`);
@@ -83,6 +93,52 @@ class ApiClient {
       params.append('fast', fast ? 'true' : 'false');
     }
     return this.request(`/authors/ranking/by-institution?${params}`);
+  }
+
+  // Admin endpoints
+  async adminLogin(password) {
+    return this.request('/admin/login', {
+      method: 'POST',
+      body: JSON.stringify({ password }),
+    });
+  }
+
+  async trackVisit(path, authorId = null) {
+    return this.request('/admin/track', {
+      method: 'POST',
+      body: JSON.stringify({ path, author_id: authorId }),
+    }).catch(() => {}); // fire-and-forget
+  }
+
+  async getAdminAnalytics(days = 30) {
+    return this.request(`/admin/analytics?days=${days}`);
+  }
+
+  async getAdminCrawlStatus() {
+    return this.request('/admin/crawl/status');
+  }
+
+  async triggerAdminCrawl() {
+    return this.request('/admin/crawl/start', { method: 'POST' });
+  }
+
+  async getCrawlTargets() {
+    return this.request('/admin/crawl/targets');
+  }
+
+  async addCrawlTarget(institutionId, institutionName) {
+    return this.request('/admin/crawl/targets', {
+      method: 'POST',
+      body: JSON.stringify({ institution_id: institutionId, institution_name: institutionName }),
+    });
+  }
+
+  async deleteCrawlTarget(institutionId) {
+    return this.request(`/admin/crawl/targets/${institutionId}`, { method: 'DELETE' });
+  }
+
+  async initCrawlTargets() {
+    return this.request('/admin/crawl/targets/init', { method: 'POST' });
   }
 
   async getCoAuthoredPapers(authorId, collaboratorId, limit = 20, offset = 0, sortBy = 'publication_date', sortOrder = 'desc', fromYear = null, toYear = null) {

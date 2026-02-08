@@ -10,7 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from config.settings import settings
 from src.database.models import init_database, get_session
-from src.api.routers import authors, system
+from src.api.routers import admin, authors, system
 
 logger = logging.getLogger(__name__)
 
@@ -60,6 +60,11 @@ def create_app() -> FastAPI:
         system.router,
         prefix="/api/v1/system",
         tags=["system"],
+    )
+    app.include_router(
+        admin.router,
+        prefix="/api/v1/admin",
+        tags=["admin"],
     )
 
     @app.get("/")

@@ -196,6 +196,18 @@ class RelationshipScore(Base):
     )
 
 
+class CrawlTarget(Base):
+    """Configurable crawl targets (institutions to crawl)."""
+
+    __tablename__ = "crawl_targets"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    institution_id = Column(String(50), unique=True, nullable=False)
+    institution_name = Column(String(500), nullable=False)
+    enabled = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
 class CrawlState(Base):
     """Tracking state for incremental crawling."""
 
@@ -246,6 +258,26 @@ class InstitutionCrawlState(Base):
     __table_args__ = (
         Index("idx_inst_crawl_institution", "institution_id"),
         Index("idx_inst_crawl_status", "status"),
+    )
+
+
+class PageVisit(Base):
+    """Visitor page view tracking for admin analytics."""
+
+    __tablename__ = "page_visits"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    ip_address = Column(String(45), nullable=False)
+    region = Column(String(200), nullable=True)
+    path = Column(String(500), nullable=False)
+    author_id = Column(String(50), nullable=True)
+    user_agent = Column(Text, nullable=True)
+    timestamp = Column(DateTime, default=datetime.utcnow)
+
+    __table_args__ = (
+        Index("idx_pagevisit_timestamp", "timestamp"),
+        Index("idx_pagevisit_ip", "ip_address"),
+        Index("idx_pagevisit_author", "author_id"),
     )
 
 

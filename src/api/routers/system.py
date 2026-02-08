@@ -24,6 +24,7 @@ from src.database.repositories import (
     WorkRepository,
     CollaborationRepository,
 )
+from src.api.auth import require_admin
 from src.api.cache import get_cache, cache_key
 
 logger = logging.getLogger(__name__)
@@ -168,6 +169,7 @@ async def trigger_crawl(
     background_tasks: BackgroundTasks,
     incremental: bool = True,
     max_works: Optional[int] = None,
+    _admin: str = Depends(require_admin),
 ):
     """
     Trigger a crawl operation.
@@ -195,6 +197,7 @@ async def trigger_crawl(
 async def trigger_analysis(
     background_tasks: BackgroundTasks,
     model_path: Optional[str] = None,
+    _admin: str = Depends(require_admin),
 ):
     """
     Trigger analysis (GNN training and score computation).

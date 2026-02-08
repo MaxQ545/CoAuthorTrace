@@ -14,6 +14,15 @@ export default defineConfig({
       '/api': {
         target: apiTarget,
         changeOrigin: true,
+        // Forward real client IP to backend
+        configure: (proxy) => {
+          proxy.on('proxyReq', (proxyReq, req) => {
+            const clientIp = req.socket.remoteAddress?.replace('::ffff:', '') || ''
+            if (clientIp) {
+              proxyReq.setHeader('X-Forwarded-For', clientIp)
+            }
+          })
+        },
       }
     }
   },

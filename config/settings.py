@@ -134,6 +134,20 @@ class MultiCrawlerSettings(BaseSettings):
     cursor_ttl_hours: int = 24  # Cursor validity period
 
 
+class AdminSettings(BaseSettings):
+    """Admin dashboard configuration."""
+    model_config = SettingsConfigDict(
+        env_prefix="COAUTHOR_ADMIN__",
+        env_file=".env",
+        extra="ignore"
+    )
+
+    password: str = ""
+    jwt_secret: str = ""
+    jwt_expiry_hours: int = 24
+    geoip_db_path: str = "data/GeoLite2-City.mmdb"
+
+
 class Settings:
     """Main settings class combining all configurations."""
 
@@ -146,6 +160,7 @@ class Settings:
         self.api = APISettings()
         self.scheduler = SchedulerSettings()
         self.multi_crawler = MultiCrawlerSettings()
+        self.admin = AdminSettings()
 
 
 # Global settings instance
