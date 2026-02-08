@@ -5,6 +5,7 @@ import logging
 from typing import Optional
 
 from sqlalchemy import tuple_
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
 from src.database.models import Author, Work, Authorship
@@ -108,7 +109,7 @@ class BatchProcessor:
                 except Exception:
                     self.session.rollback()
 
-        # Batch check which authorships already exist
+        # Batch check which authorships already exist (performance optimization)
         pairs_to_check = [
             (ad["author_id"], ad["work_id"]) for ad in authorships
         ]
@@ -128,23 +129,52 @@ class BatchProcessor:
         else:
             existing_pairs = set()
 
-        # Insert authorships and build collaborations
+        # Filter to new authorships only, deduplicate within batch
         work_authorships: dict[str, list[dict]] = {}  # work_id -> list of authorships
+        new_auth_records = []
+        seen_pairs: set[tuple[str, str]] = set()
 
         for auth_data in authorships:
             pair = (auth_data["author_id"], auth_data["work_id"])
-            if pair not in existing_pairs:
-                authorship = Authorship(**auth_data)
-                self.session.add(authorship)
-                new_authorships += 1
+            if pair in existing_pairs or pair in seen_pairs:
+                continue
+            seen_pairs.add(pair)
+            new_auth_records.append(auth_data)
 
-                # Group by work for collaboration building
-                work_id = auth_data["work_id"]
-                if work_id not in work_authorships:
-                    work_authorships[work_id] = []
-                work_authorships[work_id].append(auth_data)
+            # Group by work for collaboration building
+            work_id = auth_data["work_id"]
+            if work_id not in work_authorships:
+                work_authorships[work_id] = []
+            work_authorships[work_id].append(auth_data)
 
-        self.session.flush()
+        # Bulk insert authorships with ON CONFLICT DO NOTHING
+        # This safely handles any duplicates the existence check missed
+        if new_auth_records:
+            insert_chunk_size = 500
+            for i in range(0, len(new_auth_records), insert_chunk_size):
+                chunk = new_auth_records[i:i + insert_chunk_size]
+                values = [
+                    {
+                        "author_id": r["author_id"],
+                        "work_id": r["work_id"],
+                        "author_position": r["author_position"],
+                        "is_corresponding": r.get("is_corresponding", False),
+                        "raw_author_name": r.get("raw_author_name"),
+                        "raw_affiliation": r.get("raw_affiliation"),
+                    }
+                    for r in chunk
+                ]
+                stmt = (
+                    pg_insert(Authorship)
+                    .values(values)
+                    .on_conflict_do_nothing(
+                        index_elements=["author_id", "work_id"]
+                    )
+                )
+                result = self.session.execute(stmt)
+                new_authorships += result.rowcount
+
+            self.session.flush()
 
         # Build collaboration edges
         for work_id, work_auths in work_authorships.items():

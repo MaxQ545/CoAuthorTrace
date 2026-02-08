@@ -3,13 +3,15 @@ Multi-institution concurrent crawler with persistent state tracking.
 """
 import asyncio
 import logging
+import threading
 from datetime import datetime, timedelta
-from typing import Optional
+from typing import Dict, Optional
 
 from sqlalchemy.orm import Session
 
 from config.settings import settings, TARGET_INSTITUTIONS
 from src.database.models import (
+    CrawlTarget,
     InstitutionCrawlState,
     get_session,
     session_scope,
@@ -24,6 +26,9 @@ from src.crawler.batch_processor import BatchProcessor
 from src.analysis.weight_calculator import WeightCalculator
 
 logger = logging.getLogger(__name__)
+
+# Module-level reference to active crawler for API control
+_active_crawler: Optional["MultiInstitutionCrawler"] = None
 
 
 class MultiInstitutionCrawler:
@@ -68,6 +73,11 @@ class MultiInstitutionCrawler:
         self._semaphore: Optional[asyncio.Semaphore] = None
         self._clients: dict[str, OpenAlexClient] = {}
 
+        # Per-institution signal flags (set from API thread, checked in crawler thread)
+        self._stop_flags: Dict[str, threading.Event] = {}
+        self._pause_flags: Dict[str, threading.Event] = {}
+        self._global_stop = threading.Event()
+
     def _get_client(self, institution_id: str) -> OpenAlexClient:
         """Get or create an OpenAlex client for an institution."""
         if institution_id not in self._clients:
@@ -84,6 +94,89 @@ class MultiInstitutionCrawler:
             await client.close()
         self._clients.clear()
 
+    # ------------------------------------------------------------------
+    # External control methods (called from API thread)
+    # ------------------------------------------------------------------
+
+    def stop_institution(self, institution_id: str):
+        """Request stop for a specific institution crawl."""
+        if institution_id not in self._stop_flags:
+            self._stop_flags[institution_id] = threading.Event()
+        self._stop_flags[institution_id].set()
+        # Also clear any pause so the loop can proceed to the stop check
+        if institution_id in self._pause_flags:
+            self._pause_flags[institution_id].set()
+        # Update DB status
+        with session_scope() as session:
+            state = session.query(InstitutionCrawlState).filter(
+                InstitutionCrawlState.institution_id == institution_id
+            ).first()
+            if state:
+                state.status = "stop_requested"
+                session.commit()
+
+    def pause_institution(self, institution_id: str):
+        """Request pause for a specific institution crawl."""
+        if institution_id not in self._pause_flags:
+            self._pause_flags[institution_id] = threading.Event()
+        # Clear the event so the crawler blocks on wait()
+        self._pause_flags[institution_id].clear()
+        # Update DB status
+        with session_scope() as session:
+            state = session.query(InstitutionCrawlState).filter(
+                InstitutionCrawlState.institution_id == institution_id
+            ).first()
+            if state:
+                state.status = "pause_requested"
+                session.commit()
+
+    def resume_institution(self, institution_id: str):
+        """Resume a paused institution crawl."""
+        if institution_id in self._pause_flags:
+            self._pause_flags[institution_id].set()
+        # Update DB status
+        with session_scope() as session:
+            state = session.query(InstitutionCrawlState).filter(
+                InstitutionCrawlState.institution_id == institution_id
+            ).first()
+            if state and state.status in ("paused", "pause_requested"):
+                state.status = "running"
+                state.paused_at = None
+                session.commit()
+
+    def stop_all(self):
+        """Request stop for all institution crawls."""
+        self._global_stop.set()
+        # Also unblock any paused crawlers so they can exit
+        for ev in self._pause_flags.values():
+            ev.set()
+
+    def _check_stop(self, institution_id: str) -> bool:
+        """Check if stop has been requested for this institution or globally."""
+        return self._global_stop.is_set() or (
+            institution_id in self._stop_flags and self._stop_flags[institution_id].is_set()
+        )
+
+    def _check_and_handle_pause(self, institution_id: str, session: Session, state: InstitutionCrawlState):
+        """Check pause flag; if set, block until resumed or stop requested."""
+        if institution_id not in self._pause_flags:
+            return
+        ev = self._pause_flags[institution_id]
+        if not ev.is_set() and not self._check_stop(institution_id):
+            # Pause requested — update state and block
+            state.status = "paused"
+            state.paused_at = datetime.utcnow()
+            session.commit()
+            logger.info(f"[{institution_id}] Crawl paused")
+            # Block until resumed (event.set()) — check every 1s so we can detect stop
+            while not ev.is_set() and not self._check_stop(institution_id):
+                ev.wait(timeout=1.0)
+            if not self._check_stop(institution_id):
+                state.status = "running"
+                state.paused_at = None
+                session.commit()
+                logger.info(f"[{institution_id}] Crawl resumed")
+
     def _get_or_create_state(
         self, session: Session, institution_id: str
     ) -> InstitutionCrawlState:
@@ -95,7 +188,13 @@ class MultiInstitutionCrawler:
         )
 
         if state is None:
-            institution_name = TARGET_INSTITUTIONS.get(institution_id, "Unknown")
+            # Try CrawlTarget table first, then hardcoded dict
+            target = session.query(CrawlTarget).filter(CrawlTarget.institution_id == institution_id).first()
+            institution_name = (
+                (target.institution_name if target else None)
+                or TARGET_INSTITUTIONS.get(institution_id)
+                or "Unknown"
+            )
             state = InstitutionCrawlState(
                 institution_id=institution_id,
                 institution_name=institution_name,
@@ -104,6 +203,12 @@ class MultiInstitutionCrawler:
             )
             session.add(state)
             session.commit()
+        elif not state.institution_name or state.institution_name == "Unknown":
+            # Backfill name from CrawlTarget if available
+            target = session.query(CrawlTarget).filter(CrawlTarget.institution_id == institution_id).first()
+            if target and target.institution_name:
+                state.institution_name = target.institution_name
+                session.commit()
 
         return state
 
@@ -225,6 +330,9 @@ class MultiInstitutionCrawler:
 
         try:
             state = self._get_or_create_state(session, institution_id)
+            state.started_at = datetime.utcnow()
+            state.progress_current = 0
+            state.progress_total = None
             self._update_state(session, state, status="running", error_message=None)
 
             # Determine starting point
@@ -303,6 +411,10 @@ class MultiInstitutionCrawler:
                         stats["authorships_new"] += new_authorships
                         stats["collaborations_updated"] += new_collabs
 
+                        # Update progress in DB
+                        state.progress_current = stats["works_processed"]
+                        session.commit()
+
                         batch_works = []
                         batch_authors = []
                         batch_authorships = []
@@ -316,6 +428,15 @@ class MultiInstitutionCrawler:
                 except Exception as e:
                     logger.error(f"[{institution_id}] Error processing work: {e}")
                     stats["errors"].append(str(e))
+                    # Recover session so subsequent batches can continue
+                    try:
+                        session.rollback()
+                    except Exception:
+                        pass
+                    batch_works = []
+                    batch_authors = []
+                    batch_authorships = []
+                    pending_parsed = []
 
             # Process remaining batch
             if pending_parsed:
@@ -336,17 +457,32 @@ class MultiInstitutionCrawler:
                 stats["authorships_new"] += new_authorships
                 stats["collaborations_updated"] += new_collabs
 
-            # Update final state
-            self._update_state(
-                session, state,
-                last_publication_date=max_pub_date,
-                total_works_crawled=state.total_works_crawled + stats["works_new"],
-                status="completed",
-                completed=True,
-            )
-
-            stats["status"] = "completed"
-            logger.info(f"[{institution_id}] Crawl completed: {stats['works_new']} new works")
+            # Check if we were stopped (status set by _iter_works_with_cursor)
+            session.refresh(state)
+            if state.status in ("stopped", "paused"):
+                stats["status"] = state.status
+                # Still save progress
+                self._update_state(
+                    session, state,
+                    last_publication_date=max_pub_date,
+                    total_works_crawled=state.total_works_crawled + stats["works_new"],
+                )
+                state.progress_current = stats["works_processed"]
+                session.commit()
+                logger.info(f"[{institution_id}] Crawl {state.status}: {stats['works_new']} new works so far")
+            else:
+                # Normal completion
+                self._update_state(
+                    session, state,
+                    last_publication_date=max_pub_date,
+                    total_works_crawled=state.total_works_crawled + stats["works_new"],
+                    status="completed",
+                    completed=True,
+                )
+                state.progress_current = stats["works_processed"]
+                session.commit()
+                stats["status"] = "completed"
+                logger.info(f"[{institution_id}] Crawl completed: {stats['works_new']} new works")
 
         except Exception as e:
             logger.error(f"[{institution_id}] Crawl failed: {e}")
@@ -378,10 +514,12 @@ class MultiInstitutionCrawler:
         Iterate through works with cursor persistence.
 
         Saves cursor periodically for crash recovery.
+        Checks stop/pause signals after each HTTP response.
         """
         current_cursor = cursor or "*"
         total_yielded = 0
         batch_count = 0
+        meta_count_captured = False
 
         while current_cursor:
             response = await client.get_works(
@@ -394,6 +532,50 @@ class MultiInstitutionCrawler:
 
             results = response.get("results", [])
             meta = response.get("meta", {})
+
+            # Capture meta.count from first page to set progress_total
+            if not meta_count_captured:
+                count = meta.get("count")
+                if count is not None:
+                    state.progress_total = count
+                    session.commit()
+                meta_count_captured = True
+
+            # --- Signal checks after each HTTP response ---
+
+            # Check global stop
+            if self._check_stop(institution_id):
+                # Save cursor for resumability
+                if current_cursor and current_cursor != "*":
+                    cursor_valid = datetime.utcnow() + timedelta(hours=self.cursor_ttl_hours)
+                    self._update_state(
+                        session, state,
+                        cursor=current_cursor,
+                        cursor_valid_until=cursor_valid,
+                        status="stopped",
+                    )
+                else:
+                    self._update_state(session, state, status="stopped")
+                logger.info(f"[{institution_id}] Stop signal received, saving state")
+                return
+
+            # Check per-institution pause (blocks until resumed or stop requested)
+            self._check_and_handle_pause(institution_id, session, state)
+
+            # Re-check stop after potential pause (stop may have arrived during pause)
+            if self._check_stop(institution_id):
+                if current_cursor and current_cursor != "*":
+                    cursor_valid = datetime.utcnow() + timedelta(hours=self.cursor_ttl_hours)
+                    self._update_state(
+                        session, state,
+                        cursor=current_cursor,
+                        cursor_valid_until=cursor_valid,
+                        status="stopped",
+                    )
+                else:
+                    self._update_state(session, state, status="stopped")
+                logger.info(f"[{institution_id}] Stop signal received after pause, saving state")
+                return
 
             for work in results:
                 yield work
@@ -420,9 +602,14 @@ class MultiInstitutionCrawler:
                 break
 
 def get_all_institution_states() -> list[dict]:
-    """Get crawl states for all institutions."""
+    """Get crawl states for all institutions (excludes idle)."""
     with session_scope() as session:
-        states = session.query(InstitutionCrawlState).all()
+        states = (
+            session.query(InstitutionCrawlState)
+            .filter(InstitutionCrawlState.status != "idle")
+            .order_by(InstitutionCrawlState.started_at.desc().nullslast())
+            .all()
+        )
         return [
             {
                 "institution_id": s.institution_id,
@@ -435,6 +622,12 @@ def get_all_institution_states() -> list[dict]:
                     s.last_cursor and s.cursor_valid_until and s.cursor_valid_until > datetime.utcnow()
                 ),
                 "error_message": s.error_message,
+                "queue_position": s.queue_position,
+                "priority": s.priority,
+                "progress_current": s.progress_current,
+                "progress_total": s.progress_total,
+                "started_at": s.started_at.isoformat() if s.started_at else None,
+                "paused_at": s.paused_at.isoformat() if s.paused_at else None,
             }
             for s in states
         ]

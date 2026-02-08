@@ -1,5 +1,6 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+import path from 'path'
 
 const serverHost = process.env.COAUTHOR_FRONTEND_HOST || '0.0.0.0'
 const serverPort = Number(process.env.COAUTHOR_FRONTEND_PORT) || 3000
@@ -7,6 +8,11 @@ const apiTarget = process.env.COAUTHOR_API_URL || 'http://localhost:8000'
 
 export default defineConfig({
   plugins: [react()],
+  resolve: {
+    alias: {
+      '@': path.resolve(__dirname, './src'),
+    },
+  },
   server: {
     host: serverHost,  // Listen on all interfaces (IPv4 + IPv6)
     port: serverPort,

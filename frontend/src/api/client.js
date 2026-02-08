@@ -22,6 +22,12 @@ class ApiClient {
     const response = await fetch(url, { headers, ...options });
 
     if (!response.ok) {
+      // 401 interceptor — auto-logout on expired/invalid token
+      if (response.status === 401 && !endpoint.startsWith('/admin/login')) {
+        sessionStorage.removeItem('admin_token');
+        window.location.href = '/admin/login';
+        throw new Error('Session expired');
+      }
       throw new Error(`API Error: ${response.status}`);
     }
 
@@ -114,6 +120,10 @@ class ApiClient {
     return this.request(`/admin/analytics?days=${days}`);
   }
 
+  async getAdminVisits(limit = 20, offset = 0) {
+    return this.request(`/admin/visits?limit=${limit}&offset=${offset}`);
+  }
+
   async getAdminCrawlStatus() {
     return this.request('/admin/crawl/status');
   }
@@ -124,6 +134,10 @@ class ApiClient {
 
   async getCrawlTargets() {
     return this.request('/admin/crawl/targets');
+  }
+
+  async searchOpenAlexInstitution(query) {
+    return this.request(`/admin/crawl/search-institution?q=${encodeURIComponent(query)}`);
   }
 
   async addCrawlTarget(institutionId, institutionName) {
@@ -151,6 +165,38 @@ class ApiClient {
     if (fromYear) params.append('from_year', fromYear);
     if (toYear) params.append('to_year', toYear);
     return this.request(`/authors/${authorId}/co-authored-papers/${collaboratorId}?${params}`);
+  }
+
+  // New crawl control endpoints
+  async stopCrawl() {
+    return this.request('/admin/crawl/stop', { method: 'POST' });
+  }
+
+  async stopInstitution(id) {
+    return this.request(`/admin/crawl/stop/${id}`, { method: 'POST' });
+  }
+
+  async pauseCrawl(id) {
+    return this.request(`/admin/crawl/pause/${id}`, { method: 'POST' });
+  }
+
+  async resumeCrawl(id) {
+    return this.request(`/admin/crawl/resume/${id}`, { method: 'POST' });
+  }
+
+  async retryCrawl(id) {
+    return this.request(`/admin/crawl/retry/${id}`, { method: 'POST' });
+  }
+
+  async reorderQueue(orderedIds) {
+    return this.request('/admin/crawl/reorder', {
+      method: 'PUT',
+      body: JSON.stringify({ ordered_ids: orderedIds }),
+    });
+  }
+
+  async getCrawlProgress() {
+    return this.request('/admin/crawl/progress');
   }
 }
 

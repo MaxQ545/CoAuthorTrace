@@ -4,10 +4,10 @@ Admin dashboard API endpoints: login, visitor tracking, analytics, and crawl man
 import logging
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Optional
+from typing import List, Optional
 
 import httpx
-from fastapi import APIRouter, BackgroundTasks, Depends, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy import func, text
 from sqlalchemy.orm import Session
@@ -101,6 +101,15 @@ class TrackRequest(BaseModel):
 class CrawlTargetRequest(BaseModel):
     institution_id: str
     institution_name: str
+
+
+class ReorderItem(BaseModel):
+    institution_id: str
+    position: int
+
+
+class ReorderRequest(BaseModel):
+    items: List[ReorderItem]
 
 
 # ---------------------------------------------------------------------------
@@ -218,25 +227,6 @@ async def get_analytics(
     )
     top_regions = [{"region": r.region, "count": r.count} for r in top_regions_rows]
 
-    # Recent visits
-    recent_rows = (
-        db.query(PageVisit)
-        .order_by(PageVisit.timestamp.desc())
-        .limit(50)
-        .all()
-    )
-    recent_visits = [
-        {
-            "ip": r.ip_address,
-            "region": r.region,
-            "path": r.path,
-            "author_id": r.author_id,
-            "user_agent": r.user_agent,
-            "timestamp": r.timestamp.isoformat() if r.timestamp else None,
-        }
-        for r in recent_rows
-    ]
-
     return {
         "summary": {
             "total": total,
@@ -247,8 +237,40 @@ async def get_analytics(
         "daily_visits": daily_visits,
         "top_pages": top_pages,
         "top_regions": top_regions,
-        "recent_visits": recent_visits,
     }
+
+
+@router.get("/visits")
+async def get_visits(
+    limit: int = 20,
+    offset: int = 0,
+    _admin: str = Depends(require_admin),
+    db: Session = Depends(_get_db),
+):
+    """Return paginated recent visits."""
+    total = db.query(func.count(PageVisit.id)).scalar() or 0
+
+    rows = (
+        db.query(PageVisit)
+        .order_by(PageVisit.timestamp.desc())
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
+
+    visits = [
+        {
+            "ip": r.ip_address,
+            "region": r.region,
+            "path": r.path,
+            "author_id": r.author_id,
+            "user_agent": r.user_agent,
+            "timestamp": r.timestamp.isoformat() if r.timestamp else None,
+        }
+        for r in rows
+    ]
+
+    return {"visits": visits, "total": total, "limit": limit, "offset": offset}
 
 
 @router.get("/crawl/status")
@@ -280,22 +302,201 @@ async def start_crawl(
 ):
     """Trigger the multi-institution crawler in the background."""
     import asyncio
-    from src.crawler.multi_institution_crawler import MultiInstitutionCrawler
+    import src.crawler.multi_institution_crawler as mic
 
     # Read targets from DB; fallback to hardcoded defaults if table is empty
     targets = db.query(CrawlTarget).filter(CrawlTarget.enabled == True).all()
     if targets:
         institution_ids = [t.institution_id for t in targets]
+        target_names = {t.institution_id: t.institution_name for t in targets}
     else:
         from config.settings import TARGET_INSTITUTIONS
         institution_ids = list(TARGET_INSTITUTIONS.keys())
+        target_names = dict(TARGET_INSTITUTIONS)
+
+    # Respect queue_position ordering: order by queue_position (nulls last), then priority desc
+    states = (
+        db.query(InstitutionCrawlState)
+        .filter(InstitutionCrawlState.institution_id.in_(institution_ids))
+        .all()
+    )
+    state_map = {s.institution_id: s for s in states}
+
+    def sort_key(inst_id):
+        s = state_map.get(inst_id)
+        if s and s.queue_position is not None:
+            return (0, s.queue_position, -(s.priority or 0))
+        return (1, 0, -(s.priority or 0) if s else 0)
+
+    institution_ids.sort(key=sort_key)
+
+    # Set queued status for waiting institutions
+    now = datetime.utcnow()
+    for idx, inst_id in enumerate(institution_ids):
+        state = state_map.get(inst_id)
+        if state:
+            state.status = "queued"
+            state.queue_position = idx
+            state.started_at = now
+            state.progress_current = 0
+            state.progress_total = None
+            state.error_message = None
+            # Fill in institution name if missing
+            if (not state.institution_name or state.institution_name == "Unknown") and inst_id in target_names:
+                state.institution_name = target_names[inst_id]
+
+    db.commit()
 
     def _run(ids):
-        crawler = MultiInstitutionCrawler(institution_ids=ids)
-        asyncio.run(crawler.crawl_all())
+        crawler = mic.MultiInstitutionCrawler(institution_ids=ids)
+        mic._active_crawler = crawler
+        try:
+            asyncio.run(crawler.crawl_all())
+        finally:
+            mic._active_crawler = None
 
     background_tasks.add_task(_run, institution_ids)
-    return {"status": "started", "message": "Multi-institution crawl started in background"}
+    return {"status": "started", "message": "Multi-institution crawl started in background", "institution_ids": institution_ids}
+
+
+@router.post("/crawl/stop")
+async def stop_crawl_all(
+    _admin: str = Depends(require_admin),
+):
+    """Stop all running crawls."""
+    import src.crawler.multi_institution_crawler as mic
+    crawler = mic._active_crawler
+    if not crawler:
+        raise HTTPException(status_code=409, detail="No active crawl to stop")
+    crawler.stop_all()
+    return {"ok": True, "message": "Global stop signal sent"}
+
+
+@router.post("/crawl/stop/{institution_id}")
+async def stop_crawl_institution(
+    institution_id: str,
+    _admin: str = Depends(require_admin),
+):
+    """Stop crawl for a specific institution."""
+    import src.crawler.multi_institution_crawler as mic
+    crawler = mic._active_crawler
+    if not crawler:
+        raise HTTPException(status_code=409, detail="No active crawl running")
+    crawler.stop_institution(institution_id)
+    return {"ok": True, "message": f"Stop signal sent for {institution_id}"}
+
+
+@router.post("/crawl/pause/{institution_id}")
+async def pause_crawl_institution(
+    institution_id: str,
+    _admin: str = Depends(require_admin),
+):
+    """Pause crawl for a specific institution."""
+    import src.crawler.multi_institution_crawler as mic
+    crawler = mic._active_crawler
+    if not crawler:
+        raise HTTPException(status_code=409, detail="No active crawl running")
+    crawler.pause_institution(institution_id)
+    return {"ok": True, "message": f"Pause signal sent for {institution_id}"}
+
+
+@router.post("/crawl/resume/{institution_id}")
+async def resume_crawl_institution(
+    institution_id: str,
+    _admin: str = Depends(require_admin),
+):
+    """Resume a paused institution crawl."""
+    import src.crawler.multi_institution_crawler as mic
+    crawler = mic._active_crawler
+    if not crawler:
+        raise HTTPException(status_code=409, detail="No active crawl running")
+    crawler.resume_institution(institution_id)
+    return {"ok": True, "message": f"Resume signal sent for {institution_id}"}
+
+
+@router.post("/crawl/retry/{institution_id}")
+async def retry_crawl_institution(
+    institution_id: str,
+    _admin: str = Depends(require_admin),
+    db: Session = Depends(_get_db),
+):
+    """Reset a failed/stopped institution back to idle so it can be re-queued."""
+    state = (
+        db.query(InstitutionCrawlState)
+        .filter(InstitutionCrawlState.institution_id == institution_id)
+        .first()
+    )
+    if not state:
+        raise HTTPException(status_code=404, detail="Institution crawl state not found")
+    if state.status not in ("failed", "stopped", "completed"):
+        raise HTTPException(status_code=409, detail=f"Cannot retry institution with status '{state.status}'")
+    state.status = "idle"
+    state.error_message = None
+    state.progress_current = 0
+    state.progress_total = None
+    state.started_at = None
+    state.paused_at = None
+    db.commit()
+    return {"ok": True, "institution_id": institution_id, "status": "idle"}
+
+
+@router.put("/crawl/reorder")
+async def reorder_crawl_queue(
+    body: ReorderRequest,
+    _admin: str = Depends(require_admin),
+    db: Session = Depends(_get_db),
+):
+    """Update queue_position for institutions."""
+    updated = []
+    for item in body.items:
+        state = (
+            db.query(InstitutionCrawlState)
+            .filter(InstitutionCrawlState.institution_id == item.institution_id)
+            .first()
+        )
+        if state:
+            state.queue_position = item.position
+            updated.append(item.institution_id)
+    db.commit()
+    return {"ok": True, "updated": updated}
+
+
+@router.get("/crawl/progress")
+async def get_crawl_progress(
+    _admin: str = Depends(require_admin),
+    db: Session = Depends(_get_db),
+):
+    """Return real-time progress for all institutions (excludes idle)."""
+    rows = (
+        db.query(InstitutionCrawlState)
+        .filter(InstitutionCrawlState.status != "idle")
+        .order_by(
+            InstitutionCrawlState.started_at.desc().nullslast(),
+        )
+        .all()
+    )
+    institutions = [
+        {
+            "institution_id": r.institution_id,
+            "institution_name": r.institution_name,
+            "status": r.status,
+            "queue_position": r.queue_position,
+            "priority": r.priority,
+            "progress_current": r.progress_current,
+            "progress_total": r.progress_total,
+            "total_works_crawled": r.total_works_crawled,
+            "started_at": r.started_at.isoformat() if r.started_at else None,
+            "paused_at": r.paused_at.isoformat() if r.paused_at else None,
+            "last_crawl_completed": r.last_crawl_completed.isoformat() if r.last_crawl_completed else None,
+            "error_message": r.error_message,
+        }
+        for r in rows
+    ]
+    import src.crawler.multi_institution_crawler as mic
+    return {
+        "crawler_active": mic._active_crawler is not None,
+        "institutions": institutions,
+    }
 
 
 @router.get("/crawl/targets")
@@ -317,6 +518,45 @@ async def list_crawl_targets(
             for r in rows
         ]
     }
+
+
+@router.get("/crawl/search-institution")
+async def search_openalex_institution(
+    q: str,
+    _admin: str = Depends(require_admin),
+):
+    """Search OpenAlex for institutions by name. Returns top 10 matches."""
+    if not q or len(q.strip()) < 2:
+        return {"results": []}
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.get(
+                "https://api.openalex.org/institutions",
+                params={
+                    "search": q.strip(),
+                    "per_page": 10,
+                    "select": "id,display_name,country_code,works_count,type",
+                },
+                headers={"User-Agent": f"CoAuthorTrace/1.0 (mailto:{settings.crawler.openalex_email})"},
+            )
+            resp.raise_for_status()
+            data = resp.json()
+    except Exception as e:
+        logger.warning(f"OpenAlex institution search failed: {e}")
+        return {"results": [], "error": str(e)}
+
+    results = []
+    for item in data.get("results", []):
+        raw_id = item.get("id", "")
+        inst_id = raw_id.split("/")[-1] if "/" in raw_id else raw_id
+        results.append({
+            "institution_id": inst_id,
+            "display_name": item.get("display_name", ""),
+            "country_code": item.get("country_code", ""),
+            "works_count": item.get("works_count", 0),
+            "type": item.get("type", ""),
+        })
+    return {"results": results}
 
 
 @router.post("/crawl/targets")

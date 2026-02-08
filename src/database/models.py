@@ -257,8 +257,16 @@ class InstitutionCrawlState(Base):
     # Statistics
     total_works_crawled = Column(Integer, default=0)
 
-    # Status
-    status = Column(String(50), default="idle")  # idle/running/completed/failed
+    # Task queue fields
+    queue_position = Column(Integer, nullable=True)  # order in crawl queue
+    priority = Column(Integer, default=0)  # higher = crawl first
+    progress_current = Column(Integer, default=0)  # works fetched in current run
+    progress_total = Column(Integer, nullable=True)  # estimated total from OpenAlex meta.count
+    started_at = Column(DateTime, nullable=True)  # when current run started
+    paused_at = Column(DateTime, nullable=True)  # when last paused
+
+    # Status: idle, queued, running, paused, pause_requested, stop_requested, stopped, completed, failed
+    status = Column(String(50), default="idle")
     error_message = Column(Text, nullable=True)
 
     created_at = Column(DateTime, default=datetime.utcnow)

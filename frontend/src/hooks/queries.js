@@ -1,4 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
 import api from '../api/client';
 
 // ---------------------------------------------------------------------------
@@ -20,8 +21,10 @@ export const queryKeys = {
   institutionRanking: (institutionId, sortBy, limit, offset) =>
     ['institutionRanking', institutionId, sortBy, limit, offset],
   adminAnalytics: (days) => ['adminAnalytics', days],
+  adminVisits: (limit, offset) => ['adminVisits', limit, offset],
   adminCrawlTargets: ['adminCrawlTargets'],
   adminCrawlStatus: ['adminCrawlStatus'],
+  adminCrawlProgress: ['adminCrawlProgress'],
 };
 
 // ---------------------------------------------------------------------------
@@ -147,6 +150,14 @@ export function useAdminAnalytics(days = 30, { enabled = true } = {}) {
   });
 }
 
+export function useAdminVisits(limit = 20, offset = 0) {
+  return useQuery({
+    queryKey: queryKeys.adminVisits(limit, offset),
+    queryFn: () => api.getAdminVisits(limit, offset),
+    keepPreviousData: true,
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Admin: crawl targets
 // ---------------------------------------------------------------------------
@@ -171,6 +182,24 @@ export function useAdminCrawlStatus({ enabled = true } = {}) {
 }
 
 // ---------------------------------------------------------------------------
+// Admin: crawl progress (adaptive polling)
+// ---------------------------------------------------------------------------
+export function useCrawlProgress({ enabled = true } = {}) {
+  return useQuery({
+    queryKey: queryKeys.adminCrawlProgress,
+    queryFn: () => api.getCrawlProgress(),
+    enabled,
+    refetchInterval: (query) => {
+      const data = query.state.data;
+      if (data?.institutions?.some(i => ['running', 'pause_requested', 'stop_requested'].includes(i.status))) {
+        return 3000;
+      }
+      return 30000;
+    },
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Admin mutations
 // ---------------------------------------------------------------------------
 export function useStartCrawl() {
@@ -178,10 +207,13 @@ export function useStartCrawl() {
   return useMutation({
     mutationFn: () => api.triggerAdminCrawl(),
     onSuccess: () => {
+      toast.success('Crawl started');
       setTimeout(() => {
         queryClient.invalidateQueries({ queryKey: queryKeys.adminCrawlStatus });
+        queryClient.invalidateQueries({ queryKey: queryKeys.adminCrawlProgress });
       }, 2000);
     },
+    onError: (error) => toast.error(`Failed to start crawl: ${error.message}`),
   });
 }
 
@@ -191,8 +223,10 @@ export function useAddCrawlTarget() {
     mutationFn: ({ institutionId, institutionName }) =>
       api.addCrawlTarget(institutionId, institutionName),
     onSuccess: () => {
+      toast.success('Target added');
       queryClient.invalidateQueries({ queryKey: queryKeys.adminCrawlTargets });
     },
+    onError: (error) => toast.error(`Failed to add target: ${error.message}`),
   });
 }
 
@@ -201,8 +235,10 @@ export function useDeleteCrawlTarget() {
   return useMutation({
     mutationFn: (institutionId) => api.deleteCrawlTarget(institutionId),
     onSuccess: () => {
+      toast.success('Target deleted');
       queryClient.invalidateQueries({ queryKey: queryKeys.adminCrawlTargets });
     },
+    onError: (error) => toast.error(`Failed to delete target: ${error.message}`),
   });
 }
 
@@ -211,7 +247,84 @@ export function useInitCrawlTargets() {
   return useMutation({
     mutationFn: () => api.initCrawlTargets(),
     onSuccess: () => {
+      toast.success('Default targets imported');
       queryClient.invalidateQueries({ queryKey: queryKeys.adminCrawlTargets });
     },
+    onError: (error) => toast.error(`Failed to import defaults: ${error.message}`),
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Admin: new crawl control mutations
+// ---------------------------------------------------------------------------
+export function useStopCrawl() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.stopCrawl(),
+    onSuccess: () => {
+      toast.success('Stop signal sent to all crawls');
+      queryClient.invalidateQueries({ queryKey: queryKeys.adminCrawlProgress });
+      queryClient.invalidateQueries({ queryKey: queryKeys.adminCrawlStatus });
+    },
+    onError: (error) => toast.error(`Failed to stop crawl: ${error.message}`),
+  });
+}
+
+export function useStopInstitution() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id) => api.stopInstitution(id),
+    onSuccess: () => {
+      toast.success('Stop signal sent');
+      queryClient.invalidateQueries({ queryKey: queryKeys.adminCrawlProgress });
+    },
+    onError: (error) => toast.error(`Failed to stop institution: ${error.message}`),
+  });
+}
+
+export function usePauseCrawl() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id) => api.pauseCrawl(id),
+    onSuccess: () => {
+      toast.success('Pause signal sent');
+      queryClient.invalidateQueries({ queryKey: queryKeys.adminCrawlProgress });
+    },
+    onError: (error) => toast.error(`Failed to pause crawl: ${error.message}`),
+  });
+}
+
+export function useResumeCrawl() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id) => api.resumeCrawl(id),
+    onSuccess: () => {
+      toast.success('Crawl resumed');
+      queryClient.invalidateQueries({ queryKey: queryKeys.adminCrawlProgress });
+    },
+    onError: (error) => toast.error(`Failed to resume crawl: ${error.message}`),
+  });
+}
+
+export function useRetryCrawl() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id) => api.retryCrawl(id),
+    onSuccess: () => {
+      toast.success('Retry queued');
+      queryClient.invalidateQueries({ queryKey: queryKeys.adminCrawlProgress });
+    },
+    onError: (error) => toast.error(`Failed to retry crawl: ${error.message}`),
+  });
+}
+
+export function useReorderQueue() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (orderedIds) => api.reorderQueue(orderedIds),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.adminCrawlProgress });
+    },
+    onError: (error) => toast.error(`Failed to reorder queue: ${error.message}`),
   });
 }

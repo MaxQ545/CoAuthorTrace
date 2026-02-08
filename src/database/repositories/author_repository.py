@@ -143,21 +143,34 @@ class AuthorRepository:
                     .scalar() or 0
                 )
 
+        # Sort by actual authorship count (Author.works_count is often stale/zero)
+        authorship_count_sq = (
+            self.session.query(
+                Authorship.author_id,
+                func.count(Authorship.id).label('cnt'),
+            )
+            .group_by(Authorship.author_id)
+            .subquery()
+        )
+
         rows = (
-            self.session.query(Author)
+            self.session.query(Author, func.coalesce(authorship_count_sq.c.cnt, 0).label('acount'))
+            .outerjoin(authorship_count_sq, Author.id == authorship_count_sq.c.author_id)
             .filter(base_filter)
-            .order_by(Author.works_count.desc())
+            .order_by(func.coalesce(authorship_count_sq.c.cnt, 0).desc())
             .offset(offset)
             .limit(limit)
             .all()
         )
 
+        authors_list = [author for author, _ in rows]
+
         # Batch compute merged works count for all canonical authors
-        canonical_ids = [a.id for a in rows if a.is_canonical]
+        canonical_ids = [a.id for a in authors_list if a.is_canonical]
         merged_counts_map = self.batch_get_merged_works_count(canonical_ids) if canonical_ids else {}
 
         results: list[tuple[Author, int]] = []
-        for author in rows:
+        for author in authors_list:
             if author.is_canonical:
                 merged_count = merged_counts_map.get(author.id, author.works_count or 0)
             else:
@@ -468,23 +481,34 @@ class AuthorRepository:
             except:
                 pass
 
-        rows = (
+        # Split semicolon-separated affiliations and count each individually
+        split_sq = (
             self.session.query(
-                Authorship.raw_affiliation,
-                func.count().label("cnt"),
+                func.trim(
+                    func.unnest(func.string_to_array(Authorship.raw_affiliation, '; '))
+                ).label('institution_name')
             )
             .filter(Authorship.author_id.in_(all_ids))
             .filter(Authorship.raw_affiliation.isnot(None))
             .filter(Authorship.raw_affiliation != "")
-            .group_by(Authorship.raw_affiliation)
+            .subquery()
+        )
+
+        rows = (
+            self.session.query(
+                split_sq.c.institution_name,
+                func.count().label("cnt"),
+            )
+            .filter(split_sq.c.institution_name != "")
+            .group_by(split_sq.c.institution_name)
             .order_by(func.count().desc())
             .limit(limit)
             .all()
         )
 
         return [
-            {"name": raw_affiliation, "count": cnt}
-            for raw_affiliation, cnt in rows
+            {"name": institution_name, "count": cnt}
+            for institution_name, cnt in rows
         ]
 
     def batch_get_institution_frequencies(
@@ -502,23 +526,36 @@ class AuthorRepository:
         if not author_ids:
             return {}
 
-        # For each author, get top institution by raw_affiliation count.
-        # Use a single query with window function to rank affiliations per author.
-        # Subquery: count affiliations per (author_id, raw_affiliation)
-        counts_sq = (
+        # For each author, get top institution by splitting raw_affiliation on "; ".
+        # Use unnest(string_to_array()) to split, then rank by count per author.
+
+        # Step 1: Split affiliations into individual institution names
+        split_sq = (
             self.session.query(
                 Authorship.author_id,
-                Authorship.raw_affiliation,
-                func.count().label("cnt"),
+                func.trim(
+                    func.unnest(func.string_to_array(Authorship.raw_affiliation, '; '))
+                ).label('institution_name'),
             )
             .filter(Authorship.author_id.in_(author_ids))
             .filter(Authorship.raw_affiliation.isnot(None))
             .filter(Authorship.raw_affiliation != "")
-            .group_by(Authorship.author_id, Authorship.raw_affiliation)
             .subquery()
         )
 
-        # Window: rank by count desc within each author
+        # Step 2: Count per (author_id, institution_name)
+        counts_sq = (
+            self.session.query(
+                split_sq.c.author_id,
+                split_sq.c.institution_name,
+                func.count().label("cnt"),
+            )
+            .filter(split_sq.c.institution_name != "")
+            .group_by(split_sq.c.author_id, split_sq.c.institution_name)
+            .subquery()
+        )
+
+        # Step 3: Rank by count desc within each author
         rank_col = (
             func.row_number()
             .over(
@@ -531,7 +568,7 @@ class AuthorRepository:
         ranked_sq = (
             self.session.query(
                 counts_sq.c.author_id,
-                counts_sq.c.raw_affiliation,
+                counts_sq.c.institution_name,
                 counts_sq.c.cnt,
                 rank_col,
             )
@@ -541,7 +578,7 @@ class AuthorRepository:
         rows = (
             self.session.query(
                 ranked_sq.c.author_id,
-                ranked_sq.c.raw_affiliation,
+                ranked_sq.c.institution_name,
                 ranked_sq.c.cnt,
             )
             .filter(ranked_sq.c.rn <= limit_per_author)
@@ -549,8 +586,8 @@ class AuthorRepository:
         )
 
         result: dict[str, list[dict]] = {aid: [] for aid in author_ids}
-        for aid, affiliation, cnt in rows:
-            result[aid].append({"name": affiliation, "count": cnt})
+        for aid, institution_name, cnt in rows:
+            result[aid].append({"name": institution_name, "count": cnt})
 
         return result
 
@@ -606,34 +643,6 @@ class AuthorRepository:
         # Fallback to last known institution if no name is available
         if not institution_id:
             raise ValueError("Either institution_id or institution_name must be provided")
-
-        # Fast path: use cached counts on Author table (no year filters)
-        if fast and from_year is None and to_year is None:
-            base_filter = (
-                (Author.is_canonical == True)
-                & (Author.last_known_institution_id == institution_id)
-            )
-            total = (
-                self.session.query(func.count(Author.id))
-                .filter(base_filter)
-                .scalar() or 0
-            )
-
-            rows = (
-                self.session.query(Author)
-                .filter(base_filter)
-                .order_by(Author.works_count.desc())
-                .offset(offset)
-                .limit(limit)
-                .all()
-            )
-
-            # Keep fast path truly O(page_size): use precomputed counters on Author.
-            results = [
-                (author, author.works_count or 0, author.cited_by_count or 0)
-                for author in rows
-            ]
-            return results, total
 
         # Build base filter for canonical authors only
         base_filter = (
