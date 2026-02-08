@@ -1,6 +1,9 @@
 """
 Admin authentication utilities using JWT.
 """
+import hashlib
+import hmac
+import secrets
 from datetime import datetime, timedelta, timezone
 
 import jwt
@@ -12,9 +15,17 @@ from config.settings import settings
 _bearer_scheme = HTTPBearer()
 
 
+def _hash_password(password: str) -> str:
+    """Hash a password using SHA-256 with a constant salt derived from jwt_secret."""
+    salt = settings.admin.jwt_secret.encode()
+    return hashlib.pbkdf2_hmac("sha256", password.encode(), salt, 100_000).hex()
+
+
 def verify_password(password: str) -> bool:
-    """Check if the provided password matches the admin password."""
-    return bool(settings.admin.password) and password == settings.admin.password
+    """Check if the provided password matches the admin password using constant-time comparison."""
+    if not settings.admin.password:
+        return False
+    return hmac.compare_digest(password, settings.admin.password)
 
 
 def create_access_token() -> str:

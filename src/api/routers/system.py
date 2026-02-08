@@ -12,7 +12,6 @@ from sqlalchemy import func, text
 
 from config.settings import settings
 from src.database.models import (
-    get_session,
     Author,
     Work,
     Collaboration,
@@ -74,14 +73,8 @@ def _fast_row_count(db: Session, table: str) -> int:
     return int(value or 0)
 
 
-# Dependency for database session
-def get_db():
-    """Get database session."""
-    session = get_session()
-    try:
-        yield session
-    finally:
-        session.close()
+# Database session dependency (shared)
+from src.api.deps import get_db
 
 
 @router.get("/status", response_model=SystemStatus)

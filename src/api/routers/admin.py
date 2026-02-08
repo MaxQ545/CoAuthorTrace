@@ -19,7 +19,6 @@ from src.database.models import (
     CrawlTarget,
     InstitutionCrawlState,
     PageVisit,
-    get_session,
 )
 
 logger = logging.getLogger(__name__)
@@ -83,15 +82,8 @@ def _resolve_region(ip: str) -> Optional[str]:
     return None
 
 
-# ---------------------------------------------------------------------------
-# Database session dependency
-# ---------------------------------------------------------------------------
-def _get_db():
-    session = get_session()
-    try:
-        yield session
-    finally:
-        session.close()
+# Database session dependency (shared)
+from src.api.deps import get_db as _get_db
 
 
 # ---------------------------------------------------------------------------

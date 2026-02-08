@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom';
 import { useState } from 'react';
+import { Building2, FileText, BarChart3 } from 'lucide-react';
 import ResearchFieldsBadges from './ResearchFieldsBadges';
 
 function AuthorCard({
@@ -39,8 +40,8 @@ function AuthorCard({
           </div>
 
           {displayInstitution && (
-            <p className="text-sm text-muted-foreground mt-1">
-              🏛️ {displayInstitution}
+            <p className="text-sm text-muted-foreground mt-1 flex items-center gap-1">
+              <Building2 className="w-3.5 h-3.5" /> {displayInstitution}
             </p>
           )}
 
@@ -113,13 +114,13 @@ function AuthorCard({
           ) : (
             <>
               {author.works_count > 0 && (
-                <div className="text-muted-foreground">
-                  📄 {author.works_count} 篇{hasMultipleIds && '(合并)'}
+                <div className="text-muted-foreground flex items-center gap-1">
+                  <FileText className="w-3.5 h-3.5" /> {author.works_count} 篇{hasMultipleIds && '(合并)'}
                 </div>
               )}
               {author.cited_by_count > 0 && (
-                <div className="text-muted-foreground">
-                  📊 {author.cited_by_count} 次引用
+                <div className="text-muted-foreground flex items-center gap-1">
+                  <BarChart3 className="w-3.5 h-3.5" /> {author.cited_by_count} 次引用
                 </div>
               )}
             </>

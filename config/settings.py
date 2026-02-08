@@ -105,6 +105,17 @@ class APISettings(BaseSettings):
     port: int = 8000
     cache_ttl: int = 86400  # 24 hours
     default_top_k: int = 20
+    cors_origins: list[str] = ["http://localhost:3000", "http://localhost:5173"]
+
+    @field_validator("cors_origins", mode="before")
+    @classmethod
+    def parse_cors_origins(cls, v):
+        if isinstance(v, str):
+            try:
+                return json.loads(v)
+            except json.JSONDecodeError:
+                return [x.strip() for x in v.split(",") if x.strip()]
+        return v
 
 
 class SchedulerSettings(BaseSettings):
@@ -146,6 +157,16 @@ class AdminSettings(BaseSettings):
     jwt_secret: str = ""
     jwt_expiry_hours: int = 24
     geoip_db_path: str = "data/GeoLite2-City.mmdb"
+
+    def model_post_init(self, __context) -> None:
+        import secrets
+        import logging
+        if not self.jwt_secret:
+            self.jwt_secret = secrets.token_urlsafe(32)
+            logging.getLogger(__name__).warning(
+                "COAUTHOR_ADMIN__JWT_SECRET not set — generated a random secret. "
+                "Tokens will be invalidated on restart. Set a persistent secret in .env."
+            )
 
 
 class Settings:

@@ -8,6 +8,8 @@ import math
 from datetime import datetime
 from typing import Optional
 
+from sqlalchemy import func
+
 from config.settings import settings
 
 
@@ -192,7 +194,7 @@ class WeightCalculator:
                 .join(Authorship, Work.id == Authorship.work_id)
                 .filter(Authorship.author_id.in_([collab.author_id_1, collab.author_id_2]))
                 .group_by(Work.id)
-                .having(session.query.func.count() == 2)
+                .having(func.count() == 2)
                 .all()
             )
 

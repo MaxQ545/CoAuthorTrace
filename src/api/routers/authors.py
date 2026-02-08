@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from config.settings import settings
-from src.database.models import get_session, Author, InstitutionStats
+from src.database.models import Author, InstitutionStats
 from src.database.repositories import AuthorRepository, CollaborationRepository
 from src.analysis.relationship_scorer import RelationshipScorer
 from src.analysis.research_fields import ResearchFieldsCalculator
@@ -257,14 +257,8 @@ class CoAuthoredPapersResponse(BaseModel):
     offset: int
 
 
-# Dependency for database session
-def get_db():
-    """Get database session."""
-    session = get_session()
-    try:
-        yield session
-    finally:
-        session.close()
+# Database session dependency (shared)
+from src.api.deps import get_db
 
 
 @router.get("/search", response_model=AuthorSearchResponse)

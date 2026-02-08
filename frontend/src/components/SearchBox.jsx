@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { Search, Loader2 } from 'lucide-react';
 import api from '../api/client';
 
 function SearchBox({ onSearch, placeholder = '搜索作者...', loading = false, defaultValue = '' }) {
@@ -134,9 +135,9 @@ function SearchBox({ onSearch, placeholder = '搜索作者...', loading = false,
             className="px-6 py-3 bg-primary text-primary-foreground rounded-r-lg hover:bg-primary/90 disabled:bg-muted disabled:text-muted-foreground disabled:cursor-not-allowed transition-colors font-medium"
           >
             {loading ? (
-              <span className="inline-block animate-spin">⏳</span>
+              <Loader2 className="w-4 h-4 animate-spin" />
             ) : (
-              '🔍 搜索'
+              <span className="flex items-center gap-1"><Search className="w-4 h-4" /> 搜索</span>
             )}
           </button>
         </div>
@@ -146,8 +147,8 @@ function SearchBox({ onSearch, placeholder = '搜索作者...', loading = false,
       {showSuggestions && (
         <div className="absolute top-full left-0 right-0 mt-2 z-50 bg-background border border-border rounded-lg shadow-lg max-h-96 overflow-y-auto text-left">
           {isLoadingSuggestions ? (
-            <div className="px-4 py-3 text-muted-foreground text-sm">
-              <span className="inline-block animate-spin mr-2">⏳</span>
+            <div className="px-4 py-3 text-muted-foreground text-sm flex items-center">
+              <Loader2 className="w-4 h-4 animate-spin mr-2" />
               搜索中...
             </div>
           ) : suggestions.length > 0 ? (
