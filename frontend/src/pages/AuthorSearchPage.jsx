@@ -113,10 +113,10 @@ function AuthorSearchPage() {
                     </div>
 
                     {/* Institution */}
-                    {author.last_known_institution_name && (
+                    {(author.primary_institution_name || author.last_known_institution_name) && (
                       <div className="flex items-center gap-2 text-sm text-muted-foreground">
                         <Building2 size={16} className="flex-shrink-0" />
-                        <span>{author.last_known_institution_name}</span>
+                        <span>{author.primary_institution_name || author.last_known_institution_name}</span>
                       </div>
                     )}
 

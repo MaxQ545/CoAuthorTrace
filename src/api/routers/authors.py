@@ -294,6 +294,9 @@ async def search_authors(
     author_ids = [author.id for author, _ in authors_with_counts]
     cited_by_map = repo.batch_get_merged_cited_by_count(author_ids)
 
+    # Batch fetch primary institutions
+    institution_map = repo.batch_get_institution_frequencies(author_ids, limit_per_author=1)
+
     all_ids_map = {}
     if include_all_ids:
         canonical_ids = [
@@ -307,6 +310,13 @@ async def search_authors(
 
         # Use batch-fetched cited_by_count
         cited_by_count = cited_by_map.get(author.id, 0)
+
+        # Use batch-fetched primary institution
+        inst_freqs = institution_map.get(author.id, [])
+        primary_institution_name = (
+            inst_freqs[0]["name"] if inst_freqs else author.last_known_institution_name
+        )
+        primary_institution_count = inst_freqs[0]["count"] if inst_freqs else None
 
         # Use batch-fetched all IDs info
         all_ids_info = None
@@ -327,6 +337,8 @@ async def search_authors(
             author,
             works_count=works_count,
             cited_by_count=cited_by_count,
+            primary_institution_name=primary_institution_name,
+            primary_institution_count=primary_institution_count,
             all_ids_info=all_ids_info,
             research_fields=research_fields_models
         ))
