@@ -69,7 +69,8 @@ export default {
   		animation: {
   			'fade-in': 'fadeIn 0.5s ease-out',
   			'slide-up': 'slideUp 0.5s ease-out',
-  			'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite'
+  			'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+  			'shimmer': 'shimmer 1.5s ease-in-out infinite'
   		},
   		keyframes: {
   			fadeIn: {
@@ -88,6 +89,14 @@ export default {
   				'100%': {
   					transform: 'translateY(0)',
   					opacity: '1'
+  				}
+  			},
+  			shimmer: {
+  				'0%': {
+  					transform: 'translateX(-100%)'
+  				},
+  				'100%': {
+  					transform: 'translateX(100%)'
   				}
   			}
   		}

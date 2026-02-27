@@ -1,4 +1,4 @@
 """API routers."""
-from . import authors, system
+from . import admin, authors, network, system
 
-__all__ = ["authors", "system"]
+__all__ = ["admin", "authors", "network", "system"]
