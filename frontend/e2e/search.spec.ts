@@ -1,14 +1,15 @@
 import { test, expect } from '@playwright/test';
+import { safeGoto } from './helpers';
 
 test.describe('Author Search Page', () => {
   test('should render search page with search box', async ({ page }) => {
-    await page.goto('/authors/search');
+    await safeGoto(page, '/authors/search');
     await expect(page.getByText('作者搜索')).toBeVisible();
     await expect(page.getByPlaceholder('输入作者姓名搜索...')).toBeVisible();
   });
 
   test('should accept search input and trigger search', async ({ page }) => {
-    await page.goto('/authors/search');
+    await safeGoto(page, '/authors/search');
 
     // Type a query in the search box and submit
     const searchInput = page.getByPlaceholder('输入作者姓名搜索...');
@@ -27,7 +28,7 @@ test.describe('Author Search Page', () => {
   });
 
   test('should not trigger search results with a single character query', async ({ page }) => {
-    await page.goto('/authors/search');
+    await safeGoto(page, '/authors/search');
 
     const searchInput = page.getByPlaceholder('输入作者姓名搜索...');
     await searchInput.fill('Z');
@@ -43,7 +44,7 @@ test.describe('Author Search Page', () => {
   });
 
   test('should navigate to author page when clicking a search result', async ({ page }) => {
-    await page.goto('/authors/search?q=Zhang');
+    await safeGoto(page, '/authors/search?q=Zhang');
 
     // Wait for result cards — they may take time due to API latency
     const resultCards = page.locator('a[href^="/author/"]');

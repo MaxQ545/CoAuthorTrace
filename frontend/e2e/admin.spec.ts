@@ -1,8 +1,9 @@
 import { test, expect } from '@playwright/test';
+import { safeGoto } from './helpers';
 
 test.describe('Admin Login Page', () => {
   test('should render login form', async ({ page }) => {
-    await page.goto('/admin/login');
+    await safeGoto(page, '/admin/login');
 
     // Verify login form elements
     await expect(page.getByText('Admin Login')).toBeVisible({ timeout: 10000 });
@@ -11,7 +12,7 @@ test.describe('Admin Login Page', () => {
   });
 
   test('should have disabled submit button when password is empty', async ({ page }) => {
-    await page.goto('/admin/login');
+    await safeGoto(page, '/admin/login');
 
     // The submit button should be disabled when password field is empty
     const submitButton = page.getByRole('button', { name: /Sign In/i });
@@ -19,7 +20,7 @@ test.describe('Admin Login Page', () => {
   });
 
   test('should enable submit button and attempt login with password', async ({ page }) => {
-    await page.goto('/admin/login');
+    await safeGoto(page, '/admin/login');
 
     // Type a password — button should become enabled
     const passwordInput = page.getByPlaceholder('Enter admin password');

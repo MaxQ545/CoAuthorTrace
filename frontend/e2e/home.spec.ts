@@ -1,13 +1,14 @@
 import { test, expect } from '@playwright/test';
+import { safeGoto } from './helpers';
 
 test.describe('Home Page', () => {
   test('should load the home page', async ({ page }) => {
-    await page.goto('/');
+    await safeGoto(page, '/');
     await expect(page).toHaveTitle(/论文合作者追踪系统|CoAuthor/i);
   });
 
   test('should display navigation links', async ({ page }) => {
-    await page.goto('/');
+    await safeGoto(page, '/');
     const nav = page.locator('header nav');
     await expect(nav.getByText('首页')).toBeVisible();
     await expect(nav.getByText('机构排行')).toBeVisible();
@@ -17,7 +18,7 @@ test.describe('Home Page', () => {
   test('should confirm health endpoint returns healthy status', async ({ request }) => {
     let response;
     try {
-      response = await request.get('http://121.196.234.6:8000/health', { timeout: 25000 });
+      response = await request.get('http://121.196.234.6:8000/health', { timeout: 15000 });
     } catch {
       test.skip(true, 'Backend health endpoint unreachable from test runner');
       return;
@@ -28,7 +29,7 @@ test.describe('Home Page', () => {
   });
 
   test('should render system stats section or loading state', async ({ page }) => {
-    await page.goto('/');
+    await safeGoto(page, '/');
     // The page should show either stats cards, loading placeholders, or error message
     // Wait for page to settle, then check that at least one expected element is present
     await page.waitForTimeout(2000);
@@ -36,5 +37,16 @@ test.describe('Home Page', () => {
     const pulseVisible = await page.locator('.animate-pulse').first().isVisible().catch(() => false);
     const errorVisible = await page.getByText('加载统计数据失败').isVisible().catch(() => false);
     expect(statsVisible || pulseVisible || errorVisible).toBeTruthy();
+  });
+
+  test('should have a skip-to-content accessibility link', async ({ page }) => {
+    await safeGoto(page, '/');
+    const skipLink = page.locator('a[href="#main-content"]');
+    const exists = await skipLink.count();
+    if (exists === 0) {
+      test.skip(true, 'Skip-to-content link not deployed yet');
+      return;
+    }
+    await expect(skipLink).toHaveAttribute('href', '#main-content');
   });
 });

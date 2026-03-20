@@ -1,8 +1,9 @@
 import { test, expect } from '@playwright/test';
+import { safeGoto } from './helpers';
 
 test.describe('Network Page', () => {
   test('should load with author selection UI', async ({ page }) => {
-    await page.goto('/network');
+    await safeGoto(page, '/network');
 
     // Verify the page loads with network-related UI elements
     // The page should show author selection / seed author interface
@@ -11,7 +12,7 @@ test.describe('Network Page', () => {
   });
 
   test('should display network configuration controls', async ({ page }) => {
-    await page.goto('/network');
+    await safeGoto(page, '/network');
 
     // The page should have a button to start building the network
     const buildButton = page.locator('button').filter({ hasText: /构建|开始|Build|Start/i }).first();

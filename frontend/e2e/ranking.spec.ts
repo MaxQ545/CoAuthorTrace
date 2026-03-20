@@ -1,8 +1,9 @@
 import { test, expect } from '@playwright/test';
+import { safeGoto } from './helpers';
 
 test.describe('Ranking Page', () => {
   test('should load ranking page', async ({ page }) => {
-    await page.goto('/ranking');
+    await safeGoto(page, '/ranking');
 
     // The page shows either the header (if institutions loaded) or a loading state
     const header = page.getByText('机构学者排行');
@@ -11,7 +12,7 @@ test.describe('Ranking Page', () => {
   });
 
   test('should display institution sidebar or loading state', async ({ page }) => {
-    await page.goto('/ranking');
+    await safeGoto(page, '/ranking');
 
     // The sidebar shows institution list header or the page shows a loading state
     const sidebar = page.getByText('合作机构');
@@ -20,7 +21,7 @@ test.describe('Ranking Page', () => {
   });
 
   test('should show ranking content when data loads', async ({ page }) => {
-    await page.goto('/ranking');
+    await safeGoto(page, '/ranking');
 
     // Wait for the page to get past the initial loading state
     const header = page.getByText('机构学者排行');
@@ -40,7 +41,7 @@ test.describe('Ranking Page', () => {
   });
 
   test('should show ranking table with author names after clicking an institution', async ({ page }) => {
-    await page.goto('/ranking');
+    await safeGoto(page, '/ranking');
 
     // Wait for either the sidebar (data loaded) or loading state
     const sidebar = page.getByText(/合作机构/);

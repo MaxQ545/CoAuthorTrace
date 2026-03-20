@@ -1,9 +1,10 @@
 import { test, expect } from '@playwright/test';
+import { safeGoto } from './helpers';
 
 test.describe('Author Detail Page', () => {
   test('should display author details after navigating from search', async ({ page }) => {
     // Navigate to search and look for results
-    await page.goto('/authors/search?q=Zhang');
+    await safeGoto(page, '/authors/search?q=Zhang');
 
     const resultLinks = page.locator('a[href^="/author/"]');
     const hasResults = await resultLinks.first().isVisible({ timeout: 20000 }).catch(() => false);
