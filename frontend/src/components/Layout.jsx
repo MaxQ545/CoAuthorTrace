@@ -37,6 +37,9 @@ function Layout({ children }) {
 
   return (
     <div className="min-h-screen bg-background text-foreground flex flex-col transition-colors duration-300">
+      <a href="#main-content" className="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-50 focus:bg-white focus:text-blue-600 focus:px-4 focus:py-2 focus:rounded focus:shadow-lg dark:focus:bg-gray-800 dark:focus:text-blue-400">
+        Skip to content
+      </a>
       {/* Navbar */}
       <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
         <div className="container mx-auto px-4 h-16 flex items-center justify-between">
@@ -128,7 +131,7 @@ function Layout({ children }) {
       </div>
 
       {/* Main Content */}
-      <main className="flex-1 container mx-auto px-4 py-8">
+      <main id="main-content" tabIndex={-1} className="flex-1 container mx-auto px-4 py-8 outline-none">
         <motion.div
           key={location.pathname}
           initial={{ opacity: 0, y: 10 }}
