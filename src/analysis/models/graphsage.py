@@ -173,9 +173,10 @@ class UnsupervisedLoss(nn.Module):
         else:
             pos_loss = -F.logsigmoid(pos_sim).mean()
 
-        # Negative samples: random node pairs
-        neg_src = src.repeat(self.num_negative_samples)
-        neg_dst = torch.randint(0, num_nodes, (num_edges * self.num_negative_samples,))
+        # Negative samples: random node pairs (use randint for both to avoid memory explosion)
+        num_neg = num_edges * self.num_negative_samples
+        neg_src = torch.randint(0, num_nodes, (num_neg,), device=embeddings.device)
+        neg_dst = torch.randint(0, num_nodes, (num_neg,), device=embeddings.device)
 
         neg_sim = (embeddings[neg_src] * embeddings[neg_dst]).sum(dim=-1)
         neg_loss = -F.logsigmoid(-neg_sim).mean()
@@ -191,6 +192,7 @@ def train_graphsage(
     epochs: int = 100,
     learning_rate: float = 0.01,
     device: Optional[str] = None,
+    early_stopping_patience: int = 10,
 ) -> tuple[GraphSAGEModel, list[float]]:
     """
     Train GraphSAGE model on graph data.
@@ -203,6 +205,7 @@ def train_graphsage(
         epochs: Number of training epochs
         learning_rate: Learning rate
         device: Device to use (default: auto-detect)
+        early_stopping_patience: Stop if loss doesn't improve for this many epochs (0 to disable)
 
     Returns:
         Tuple of (trained model, loss history)
@@ -228,9 +231,12 @@ def train_graphsage(
     criterion = UnsupervisedLoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
 
-    # Training loop
+    # Training loop with early stopping
     losses = []
     model.train()
+    best_loss = float("inf")
+    best_state_dict = None
+    patience_counter = 0
 
     for epoch in range(epochs):
         optimizer.zero_grad()
@@ -241,10 +247,31 @@ def train_graphsage(
         loss.backward()
         optimizer.step()
 
-        losses.append(loss.item())
+        current_loss = loss.item()
+        losses.append(current_loss)
 
         if (epoch + 1) % 10 == 0:
-            logger.info(f"Epoch {epoch + 1}/{epochs}, Loss: {loss.item():.4f}")
+            logger.info(f"Epoch {epoch + 1}/{epochs}, Loss: {current_loss:.4f}")
+
+        # Early stopping check
+        if early_stopping_patience > 0:
+            if current_loss < best_loss - 1e-6:
+                best_loss = current_loss
+                best_state_dict = {k: v.clone() for k, v in model.state_dict().items()}
+                patience_counter = 0
+            else:
+                patience_counter += 1
+                if patience_counter >= early_stopping_patience:
+                    logger.info(
+                        f"Early stopping at epoch {epoch + 1}: "
+                        f"no improvement for {early_stopping_patience} epochs "
+                        f"(best loss: {best_loss:.4f})"
+                    )
+                    break
+
+    # Restore best model weights if early stopping was used
+    if best_state_dict is not None:
+        model.load_state_dict(best_state_dict)
 
     return model, losses
 
