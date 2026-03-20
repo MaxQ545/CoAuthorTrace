@@ -1,8 +1,10 @@
 import { Navigate, useNavigate, useSearchParams } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { BarChart3, Bot, LogOut } from 'lucide-react'
+import { BarChart3, Bot, LogOut, AlertTriangle } from 'lucide-react'
+import { useQuery } from '@tanstack/react-query'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { useAuth } from '../contexts/AuthContext'
+import api from '../api/client'
 import AnalyticsTab from '../components/admin/AnalyticsTab'
 import CrawlTab from '../components/admin/CrawlTab'
 
@@ -10,6 +12,14 @@ export default function AdminDashboardPage() {
   const { isAuthenticated, logout } = useAuth()
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
+
+  const { data: systemStatus } = useQuery({
+    queryKey: ['systemStatus'],
+    queryFn: () => api.getSystemStatus(),
+    staleTime: 60 * 1000,
+  })
+
+  const redisDown = systemStatus?.redis_enabled && !systemStatus?.redis_connected
 
   const tab = searchParams.get('tab') || 'analytics'
 
@@ -28,6 +38,14 @@ export default function AdminDashboardPage() {
 
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-6 pb-12">
+      {/* Redis warning banner */}
+      {redisDown && (
+        <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-300 text-sm">
+          <AlertTriangle className="w-5 h-5 shrink-0" />
+          <span>缓存服务未连接，系统性能可能受影响 (Cache service not connected, system performance may be affected)</span>
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
