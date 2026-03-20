@@ -17,6 +17,8 @@ export const queryKeys = {
   networkMetrics: (authorId) => ['networkMetrics', authorId],
   coAuthoredPapers: (authorId, collaboratorId, limit, offset, sortBy, sortOrder, fromYear, toYear) =>
     ['coAuthoredPapers', authorId, collaboratorId, limit, offset, sortBy, sortOrder, fromYear, toYear],
+  publicationTimeline: (authorId, fromYear, toYear) =>
+    ['publicationTimeline', authorId, fromYear, toYear],
   institutions: (query) => ['institutions', query],
   institutionRanking: (institutionId, sortBy, limit, offset) =>
     ['institutionRanking', institutionId, sortBy, limit, offset],
@@ -112,6 +114,19 @@ export function useCoAuthoredPapers(authorId, collaboratorId, limit = 10, offset
     queryKey: queryKeys.coAuthoredPapers(authorId, collaboratorId, limit, offset, sortBy, sortOrder, fromYear, toYear),
     queryFn: () => api.getCoAuthoredPapers(authorId, collaboratorId, limit, offset, sortBy, sortOrder, fromYear, toYear),
     enabled: !!authorId && !!collaboratorId,
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Publication timeline
+// ---------------------------------------------------------------------------
+export function usePublicationTimeline(authorId, fromYear = null, toYear = null) {
+  return useQuery({
+    queryKey: queryKeys.publicationTimeline(authorId, fromYear, toYear),
+    queryFn: () => api.getAuthorTimeline(authorId, fromYear, toYear),
+    enabled: !!authorId,
+    staleTime: 5 * 60 * 1000,
+    select: (data) => data.timeline || [],
   });
 }
 

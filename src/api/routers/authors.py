@@ -6,7 +6,7 @@ import json
 from functools import lru_cache
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Path, Query
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -575,6 +575,24 @@ async def get_author(
         top_institutions=institution_freq_models,
         research_fields=research_fields_models,
     )
+
+
+@router.get("/{author_id}/publication-timeline")
+async def get_publication_timeline(
+    author_id: str = Path(..., pattern=r"^A\d+$"),
+    from_year: Optional[int] = Query(None, ge=1900, le=2100, description="Start year (inclusive)"),
+    to_year: Optional[int] = Query(None, ge=1900, le=2100, description="End year (inclusive)"),
+    db: Session = Depends(get_db),
+):
+    """
+    Get per-year publication counts and citation totals for an author.
+
+    Returns a timeline of yearly works_count and cited_by_count,
+    useful for rendering publication activity charts.
+    """
+    repo = AuthorRepository(db)
+    timeline = repo.get_publication_timeline(author_id, from_year, to_year)
+    return {"author_id": author_id, "timeline": timeline}
 
 
 @router.get("/{author_id}/top-relations", response_model=TopRelationsResponse)

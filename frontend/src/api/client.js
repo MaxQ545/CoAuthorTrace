@@ -71,6 +71,14 @@ class ApiClient {
     return this.request(`/authors/${authorId}/top-relations?${params}`);
   }
 
+  async getAuthorTimeline(authorId, fromYear = null, toYear = null) {
+    const params = new URLSearchParams();
+    if (fromYear) params.append('from_year', fromYear);
+    if (toYear) params.append('to_year', toYear);
+    const suffix = params.toString() ? `?${params}` : '';
+    return this.request(`/authors/${authorId}/publication-timeline${suffix}`);
+  }
+
   async getAuthorNetworkMetrics(authorId, full = true) {
     const params = new URLSearchParams();
     if (full) params.append('full', 'true');
