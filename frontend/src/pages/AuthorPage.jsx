@@ -3,6 +3,7 @@ import { useParams, Link } from 'react-router-dom';
 import { useAuthor, useAuthorCollaborators, useNetworkMetrics } from '../hooks/queries';
 import AuthorCard from '../components/AuthorCard';
 import CoAuthoredPapersModal from '../components/CoAuthoredPapersModal';
+import PublicationTimeline from '../components/PublicationTimeline';
 import ResearchFieldsBadges from '../components/ResearchFieldsBadges';
 import { useTimeFilter } from '../contexts/TimeFilterContext';
 import { exportToCSV, exportToJSON } from '../utils/export';
@@ -353,6 +354,15 @@ function AuthorPage() {
           </div>
         </motion.div>
       )}
+
+      {/* Publication Timeline */}
+      <motion.div variants={itemVariants}>
+        <PublicationTimeline
+          authorId={authorId}
+          fromYear={timeRange.fromYear}
+          toYear={timeRange.toYear}
+        />
+      </motion.div>
 
       {/* Collaborators List */}
       <motion.div variants={itemVariants} className="bg-card rounded-xl border border-border shadow-sm p-6">

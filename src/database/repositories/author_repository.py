@@ -1311,6 +1311,65 @@ class AuthorRepository:
 
         return result
 
+    def get_publication_timeline(
+        self,
+        author_id: str,
+        from_year: Optional[int] = None,
+        to_year: Optional[int] = None,
+    ) -> list[dict]:
+        """Get per-year publication counts and citation sums for an author.
+
+        Merges across all alias IDs so the timeline reflects the full
+        publication record of a canonical author.
+
+        Returns list of dicts sorted by year ascending:
+            [{"year": 2020, "works_count": 5, "cited_by_count": 120}, ...]
+        """
+        import json
+
+        author = self.get_by_id(author_id)
+        if not author:
+            return []
+
+        all_ids = [author_id]
+        if author.alias_ids:
+            try:
+                all_ids.extend(json.loads(author.alias_ids))
+            except Exception:
+                pass
+
+        query = (
+            self.session.query(
+                Work.publication_year,
+                func.count(func.distinct(Work.id)).label("works_count"),
+                func.sum(Work.cited_by_count).label("cited_by_count"),
+            )
+            .join(Authorship, Authorship.work_id == Work.id)
+            .filter(Authorship.author_id.in_(all_ids))
+            .filter(Work.publication_year.isnot(None))
+        )
+
+        if from_year is not None:
+            query = query.filter(Work.publication_year >= from_year)
+        if to_year is not None:
+            query = query.filter(Work.publication_year <= to_year)
+
+        rows = (
+            query
+            .group_by(Work.publication_year)
+            .order_by(Work.publication_year.asc())
+            .all()
+        )
+
+        return [
+            {
+                "year": year,
+                "works_count": works_count or 0,
+                "cited_by_count": cited_by_count or 0,
+            }
+            for year, works_count, cited_by_count in rows
+        ]
+
     def refresh_institution_stats(self) -> int:
         """Rebuild institution stats table. Returns number of institutions."""
         rows = (
