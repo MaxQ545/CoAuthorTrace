@@ -47,6 +47,8 @@ function NetworkPage() {
   const pendingNodesRef = useRef([]);
   const pendingEdgesRef = useRef([]);
   const flushTimerRef = useRef(null);
+  const sidebarTimerRef = useRef(null);
+  const sidebarDirtyRef = useRef(false);
 
   // SSE hook
   const { state: streamState, progress, error: streamError, connect, disconnect } = useNetworkStream();
@@ -65,6 +67,20 @@ function NetworkPage() {
     }
   }, [urlAuthor, authorId]);
 
+  // Debounced sidebar sync (runs at most every 500ms)
+  const scheduleSidebarSync = useCallback(() => {
+    sidebarDirtyRef.current = true;
+    if (!sidebarTimerRef.current) {
+      sidebarTimerRef.current = setTimeout(() => {
+        sidebarTimerRef.current = null;
+        if (sidebarDirtyRef.current) {
+          sidebarDirtyRef.current = false;
+          setSidebarNodes([...nodesMapRef.current.values()]);
+        }
+      }, 500);
+    }
+  }, []);
+
   // Flush batched updates to vis-network and state
   const flushUpdates = useCallback(() => {
     if (pendingNodesRef.current.length > 0) {
@@ -75,7 +91,7 @@ function NetworkPage() {
         graphRef.current?.addNode(n);
       }
       setNodesCount(nodesMapRef.current.size);
-      setSidebarNodes([...nodesMapRef.current.values()]);
+      scheduleSidebarSync();
     }
     if (pendingEdgesRef.current.length > 0) {
       const edges = pendingEdgesRef.current;
@@ -91,7 +107,7 @@ function NetworkPage() {
       setEdgesCount(edgesListRef.current.length);
     }
     flushTimerRef.current = null;
-  }, []);
+  }, [scheduleSidebarSync]);
 
   const scheduleFlush = useCallback(() => {
     if (!flushTimerRef.current) {
@@ -145,8 +161,13 @@ function NetworkPage() {
           if (data.components != null) setComponents(data.components);
         },
         onComplete: (data) => {
-          // Final flush
+          // Final flush (including sidebar)
           flushUpdates();
+          if (sidebarTimerRef.current) {
+            clearTimeout(sidebarTimerRef.current);
+            sidebarTimerRef.current = null;
+          }
+          setSidebarNodes([...nodesMapRef.current.values()]);
           if (data.components != null) setComponents(data.components);
           if (data.all_connected != null) setAllConnected(data.all_connected);
           // Stabilize and fit after completion
@@ -200,6 +221,7 @@ function NetworkPage() {
   useEffect(() => {
     return () => {
       if (flushTimerRef.current) clearTimeout(flushTimerRef.current);
+      if (sidebarTimerRef.current) clearTimeout(sidebarTimerRef.current);
     };
   }, []);
 

@@ -77,6 +77,12 @@ const NetworkGraph = forwardRef(function NetworkGraph(
   const visEdgesRef = useRef(null);
   const [loading, setLoading] = useState(true);
   const initRef = useRef(false);
+  const centerNodeIdRef = useRef(centerNodeId);
+
+  // Keep centerNodeIdRef current without causing re-renders
+  useEffect(() => {
+    centerNodeIdRef.current = centerNodeId;
+  }, [centerNodeId]);
 
   // Initialize vis-network (once for progressive mode, or on data change for legacy)
   const initNetwork = useCallback(async (initialNodes = [], initialEdges = []) => {
@@ -98,6 +104,7 @@ const NetworkGraph = forwardRef(function NetworkGraph(
       visEdgesRef.current = new DataSet();
     } else {
       // Legacy mode: populate DataSets from props
+      const currentCenterNodeId = centerNodeIdRef.current;
       visNodesRef.current = new DataSet(
         initialNodes.map((node) => ({
           id: node.id,
@@ -109,10 +116,10 @@ const NetworkGraph = forwardRef(function NetworkGraph(
               引用: ${node.citations || 0}
             </div>`
           ),
-          color: node.id === centerNodeId ? CENTER_COLOR : DEFAULT_NODE_COLOR,
-          size: node.id === centerNodeId ? 35 : Math.max(15, Math.min(30, 15 + (node.collabCount || 0) * 0.5)),
+          color: node.id === currentCenterNodeId ? CENTER_COLOR : DEFAULT_NODE_COLOR,
+          size: node.id === currentCenterNodeId ? 35 : Math.max(15, Math.min(30, 15 + (node.collabCount || 0) * 0.5)),
           font: {
-            size: node.id === centerNodeId ? 16 : 14,
+            size: node.id === currentCenterNodeId ? 16 : 14,
             face: 'Inter, system-ui, sans-serif',
             color: '#1F2937',
             strokeWidth: 4,
@@ -223,7 +230,7 @@ const NetworkGraph = forwardRef(function NetworkGraph(
     }
 
     initRef.current = true;
-  }, [progressive, centerNodeId, onNodeClick]);
+  }, [progressive, onNodeClick]);
 
   // Legacy mode: reinit on data change
   useEffect(() => {

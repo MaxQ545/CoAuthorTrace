@@ -135,6 +135,7 @@ export function useInstitutionRanking(institutionId) {
     queryKey: queryKeys.institutionRanking(institutionId),
     queryFn: () => api.getInstitutionRanking(institutionId, null, 100, 0, null, null, false),
     enabled: !!institutionId,
+    placeholderData: (previousData) => previousData,
   });
 }
 
