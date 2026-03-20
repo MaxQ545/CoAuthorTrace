@@ -1,9 +1,9 @@
 import { Link } from 'react-router-dom';
-import { useState } from 'react';
+import { useState, memo } from 'react';
 import { Building2, FileText, BarChart3 } from 'lucide-react';
 import ResearchFieldsBadges from './ResearchFieldsBadges';
 
-function AuthorCard({
+const AuthorCard = memo(function AuthorCard({
   author,
   showCollabCount = false,
   collabCount = 0,
@@ -152,6 +152,6 @@ function AuthorCard({
       </div>
     </div>
   );
-}
+});
 
 export default AuthorCard;

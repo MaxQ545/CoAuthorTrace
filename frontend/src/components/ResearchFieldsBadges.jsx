@@ -1,10 +1,11 @@
+import { memo } from 'react';
 import { cn } from '../lib/utils';
 
 /**
  * Research fields display component.
  * Shows research fields as styled badges.
  */
-function ResearchFieldsBadges({ fields, maxDisplay = 3, showCount = false }) {
+const ResearchFieldsBadges = memo(function ResearchFieldsBadges({ fields, maxDisplay = 3, showCount = false }) {
   if (!fields || fields.length === 0) {
     return null;
   }
@@ -36,6 +37,6 @@ function ResearchFieldsBadges({ fields, maxDisplay = 3, showCount = false }) {
       )}
     </div>
   );
-}
+});
 
 export default ResearchFieldsBadges;

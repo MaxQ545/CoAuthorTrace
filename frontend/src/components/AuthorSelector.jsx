@@ -3,6 +3,8 @@ import { Search, X, Loader2, UserPlus, Users } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import api from '../api/client';
 
+const DEBOUNCE_DELAY_MS = 500;
+
 /**
  * Multi-author search & select component with chips.
  *
@@ -52,7 +54,7 @@ function AuthorSelector({ selectedAuthors = [], onAdd, onRemove, maxAuthors = 5,
       } finally {
         setIsSearching(false);
       }
-    }, 500);
+    }, DEBOUNCE_DELAY_MS);
 
     return () => clearTimeout(timeout);
   }, [query]);
@@ -193,6 +195,7 @@ function AuthorSelector({ selectedAuthors = [], onAdd, onRemove, maxAuthors = 5,
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 8 }}
             transition={{ duration: 0.15 }}
+            role="listbox"
             className="absolute top-full left-0 right-0 mt-2 z-50 bg-popover border border-border rounded-xl shadow-xl max-h-72 overflow-y-auto"
           >
             {suggestions.length > 0 ? (
@@ -200,6 +203,8 @@ function AuthorSelector({ selectedAuthors = [], onAdd, onRemove, maxAuthors = 5,
                 {suggestions.map((author, index) => (
                   <li
                     key={author.id}
+                    role="option"
+                    aria-selected={index === selectedIndex}
                     className={`px-4 py-3 cursor-pointer transition-colors border-b border-border/50 last:border-b-0 ${
                       index === selectedIndex ? 'bg-accent' : 'hover:bg-accent/50'
                     }`}
