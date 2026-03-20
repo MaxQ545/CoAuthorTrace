@@ -1,9 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useCoAuthoredPapers } from '../hooks/queries';
 import { useTimeFilter } from '../contexts/TimeFilterContext';
 import { X, Calendar, BookOpen, ExternalLink, ArrowUpDown, Lock, Unlock, Loader2, Quote } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '../lib/utils';
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 
 function CoAuthoredPapersModal({
   isOpen,
@@ -34,6 +35,21 @@ function CoAuthoredPapersModal({
 
   const papers = data?.papers || [];
   const total = data?.total || 0;
+
+  // Aggregate papers by publication year for mini-timeline chart
+  const yearData = useMemo(() => {
+    const counts = {};
+    for (const paper of papers) {
+      const year = paper.publication_year
+        || (paper.publication_date ? parseInt(paper.publication_date.slice(0, 4), 10) : null);
+      if (year) {
+        counts[year] = (counts[year] || 0) + 1;
+      }
+    }
+    return Object.entries(counts)
+      .map(([year, count]) => ({ year: Number(year), count }))
+      .sort((a, b) => a.year - b.year);
+  }, [papers]);
 
   // Reset when modal opens with new collaborator
   useEffect(() => {
@@ -122,6 +138,35 @@ function CoAuthoredPapersModal({
                 共 {total} 篇合作论文
               </div>
             </div>
+
+            {/* Mini-timeline chart */}
+            {!loading && papers.length >= 2 && yearData.length > 0 && (
+              <div className="px-6 pt-4 pb-2 border-b border-border">
+                <ResponsiveContainer width="100%" height={100}>
+                  <BarChart data={yearData} margin={{ top: 4, right: 8, bottom: 0, left: -20 }}>
+                    <XAxis
+                      dataKey="year"
+                      tick={{ fontSize: 11 }}
+                      tickLine={false}
+                      axisLine={false}
+                    />
+                    <YAxis
+                      allowDecimals={false}
+                      tick={{ fontSize: 11 }}
+                      tickLine={false}
+                      axisLine={false}
+                      width={30}
+                    />
+                    <Tooltip
+                      contentStyle={{ fontSize: 12, borderRadius: 8 }}
+                      formatter={(value) => [`${value} 篇`, '论文数']}
+                      labelFormatter={(label) => `${label} 年`}
+                    />
+                    <Bar dataKey="count" fill="#3b82f6" radius={[3, 3, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            )}
 
             {/* List Content */}
             <div className="flex-1 overflow-y-auto p-6 scrollbar-thin">
