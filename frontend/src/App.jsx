@@ -12,6 +12,7 @@ const RankingPage = lazy(() => import('./pages/RankingPage'))
 const ComparePage = lazy(() => import('./pages/ComparePage'))
 const AdminLoginPage = lazy(() => import('./pages/AdminLoginPage'))
 const AdminDashboardPage = lazy(() => import('./pages/AdminDashboardPage'))
+const ComparePage = lazy(() => import('./pages/ComparePage'))
 
 function PageLoader() {
   return (
