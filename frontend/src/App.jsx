@@ -9,6 +9,7 @@ const AuthorPage = lazy(() => import('./pages/AuthorPage'))
 const AuthorSearchPage = lazy(() => import('./pages/AuthorSearchPage'))
 const NetworkPage = lazy(() => import('./pages/NetworkPage'))
 const RankingPage = lazy(() => import('./pages/RankingPage'))
+const ComparePage = lazy(() => import('./pages/ComparePage'))
 const AdminLoginPage = lazy(() => import('./pages/AdminLoginPage'))
 const AdminDashboardPage = lazy(() => import('./pages/AdminDashboardPage'))
 
@@ -37,6 +38,7 @@ function App() {
           <Route path="/author/:authorId" element={<AuthorPage />} />
           <Route path="/network" element={<NetworkPage />} />
           <Route path="/network/:authorId" element={<NetworkPage />} />
+          <Route path="/compare" element={<ComparePage />} />
           <Route path="/ranking" element={<RankingPage />} />
           <Route path="/admin/login" element={<AdminLoginPage />} />
           <Route path="/admin" element={<AdminDashboardPage />} />

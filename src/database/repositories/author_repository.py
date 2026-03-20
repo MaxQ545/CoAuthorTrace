@@ -998,6 +998,36 @@ class AuthorRepository:
 
         return query.scalar() or 0
 
+    def get_publication_timeline(self, author_id: str) -> list[dict]:
+        """Get publication counts grouped by year for an author (including aliases)."""
+        import json
+
+        author = self.get_by_id(author_id)
+        if not author:
+            return []
+
+        all_ids = [author_id]
+        if author.alias_ids:
+            try:
+                all_ids.extend(json.loads(author.alias_ids))
+            except:
+                pass
+
+        rows = (
+            self.session.query(
+                Work.publication_year,
+                func.count(func.distinct(Authorship.work_id)),
+            )
+            .join(Authorship, Work.id == Authorship.work_id)
+            .filter(Authorship.author_id.in_(all_ids))
+            .filter(Work.publication_year.isnot(None))
+            .group_by(Work.publication_year)
+            .order_by(Work.publication_year)
+            .all()
+        )
+
+        return [{"year": row[0], "count": row[1]} for row in rows]
+
     def _get_merged_cited_by_count_by_year(
         self,
         author_id: str,

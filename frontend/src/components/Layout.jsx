@@ -1,6 +1,6 @@
 import { Link, useLocation } from 'react-router-dom';
 import TimeRangeSelector from './TimeRangeSelector';
-import { LayoutDashboard, Network, Trophy, BookOpen, Sun, Moon } from 'lucide-react';
+import { LayoutDashboard, Network, Trophy, BookOpen, Sun, Moon, ArrowRightLeft } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '../lib/utils';
 import { useState, useEffect } from 'react';
@@ -33,6 +33,7 @@ function Layout({ children }) {
     { path: '/', label: '首页', icon: LayoutDashboard },
     { path: '/ranking', label: '机构排行', icon: Trophy },
     { path: '/network', label: '合作网络', icon: Network },
+    { path: '/compare', label: '对比', icon: ArrowRightLeft },
   ];
 
   return (
