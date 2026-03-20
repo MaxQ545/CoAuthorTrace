@@ -6,9 +6,10 @@ import NetworkGraph from '../components/NetworkGraph';
 import AuthorSelector from '../components/AuthorSelector';
 import NetworkProgress from '../components/NetworkProgress';
 import { useTimeFilter } from '../contexts/TimeFilterContext';
+import { exportToCSV } from '../utils/export';
 import {
   Network, Users, Play, RotateCcw, Settings2,
-  ChevronDown, ChevronUp, Info, Waypoints,
+  ChevronDown, ChevronUp, Info, Waypoints, Download,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -244,14 +245,46 @@ function NetworkPage() {
             </button>
 
             {hasResults && (
-              <button
-                onClick={handleReset}
-                disabled={isStreaming}
-                className="inline-flex items-center gap-2 px-4 py-2.5 bg-secondary text-secondary-foreground rounded-xl hover:bg-secondary/80 disabled:opacity-50 transition-colors text-sm"
-              >
-                <RotateCcw size={14} />
-                重置
-              </button>
+              <>
+                <button
+                  onClick={handleReset}
+                  disabled={isStreaming}
+                  className="inline-flex items-center gap-2 px-4 py-2.5 bg-secondary text-secondary-foreground rounded-xl hover:bg-secondary/80 disabled:opacity-50 transition-colors text-sm"
+                >
+                  <RotateCcw size={14} />
+                  重置
+                </button>
+                <button
+                  onClick={() => {
+                    const data = [...nodesMapRef.current.values()].map(n => ({
+                      id: n.id,
+                      name: n.label || n.display_name || '',
+                      institution: n.institution || '',
+                      depth: n.depth ?? '',
+                      works_count: n.works_count ?? '',
+                    }));
+                    exportToCSV(data, 'network_nodes.csv');
+                  }}
+                  className="inline-flex items-center gap-1.5 px-3 py-2.5 bg-secondary text-secondary-foreground rounded-xl hover:bg-secondary/80 transition-colors text-sm"
+                  title="导出节点 (CSV)"
+                >
+                  <Download size={14} /> 节点
+                </button>
+                <button
+                  onClick={() => {
+                    const data = edgesListRef.current.map(e => ({
+                      from: e.from,
+                      to: e.to,
+                      weight: e.value ?? e.weight ?? '',
+                    }));
+                    exportToCSV(data, 'network_edges.csv');
+                  }}
+                  className="inline-flex items-center gap-1.5 px-3 py-2.5 bg-secondary text-secondary-foreground rounded-xl hover:bg-secondary/80 transition-colors text-sm"
+                  title="导出边 (CSV)"
+                >
+                  <Download size={14} /> 边
+                </button>
+              </>
             )}
 
             <button
