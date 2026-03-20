@@ -2,16 +2,37 @@
 FastAPI application for Coauthor Tracing System.
 """
 import logging
+import uuid
+from contextvars import ContextVar
 from contextlib import asynccontextmanager
 from typing import Optional
 
-from fastapi import FastAPI, Depends
+from fastapi import FastAPI, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from starlette.middleware.gzip import GZipMiddleware
 
 from config.settings import settings
 from src.database.models import init_database, get_session
 from src.api.routers import admin, authors, network, system
+
+# Structured logging with request ID
+request_id_var: ContextVar[str] = ContextVar("request_id", default="-")
+
+
+class RequestIDFilter(logging.Filter):
+    def filter(self, record):
+        record.request_id = request_id_var.get("-")
+        return True
+
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s [%(name)s] [req:%(request_id)s] %(message)s",
+    force=True,
+)
+for handler in logging.root.handlers:
+    handler.addFilter(RequestIDFilter())
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +63,9 @@ def create_app() -> FastAPI:
         openapi_url="/api/openapi.json",
     )
 
+    # GZip compression (applied last = runs first in the middleware stack)
+    app.add_middleware(GZipMiddleware, minimum_size=1000)
+
     # CORS middleware
     app.add_middleware(
         CORSMiddleware,
@@ -50,6 +74,15 @@ def create_app() -> FastAPI:
         allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
         allow_headers=["Content-Type", "Authorization"],
     )
+
+    # Request ID middleware
+    @app.middleware("http")
+    async def request_id_middleware(request: Request, call_next):
+        rid = request.headers.get("X-Request-ID", str(uuid.uuid4()))
+        request_id_var.set(rid)
+        response = await call_next(request)
+        response.headers["X-Request-ID"] = rid
+        return response
 
     # Include routers
     app.include_router(

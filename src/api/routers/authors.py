@@ -359,7 +359,7 @@ async def search_authors(
 @router.get("/institutions", response_model=InstitutionsResponse)
 async def list_institutions(
     q: Optional[str] = Query(None, description="Institution name keyword"),
-    limit: Optional[int] = Query(None, ge=1, le=5000, description="Maximum results"),
+    limit: int = Query(200, ge=1, le=5000, description="Maximum results"),
     offset: int = Query(0, ge=0, description="Result offset"),
     refresh: bool = Query(False, description="Refresh cached institution stats"),
     db: Session = Depends(get_db),
