@@ -696,22 +696,81 @@ class AuthorRepository:
             .all()
         )
 
-        # Calculate merged counts only when aliases exist
+        # Batch-compute merged counts for authors with aliases
+        import json
+
+        # Identify authors that have aliases and need merged counts
+        authors_with_aliases = {
+            author.id: author for author, _, _ in rows if author.alias_ids
+        }
+
+        # Batch merged counts if any authors have aliases
+        merged_works_map = {}
+        merged_cited_map = {}
+        if authors_with_aliases:
+            # Collect all alias IDs in one pass
+            author_id_to_all_ids = {}
+            all_alias_ids = []
+            for author_id, author in authors_with_aliases.items():
+                all_ids = [author_id]
+                try:
+                    all_ids.extend(json.loads(author.alias_ids))
+                except Exception:
+                    pass
+                author_id_to_all_ids[author_id] = all_ids
+                all_alias_ids.extend(all_ids)
+
+            # Batch query: works count per author_id
+            works_query = (
+                self.session.query(
+                    Authorship.author_id,
+                    func.count(func.distinct(Authorship.work_id)),
+                )
+                .filter(Authorship.author_id.in_(all_alias_ids))
+            )
+            if from_year is not None or to_year is not None:
+                works_query = works_query.join(Work, Authorship.work_id == Work.id)
+                if from_year is not None:
+                    works_query = works_query.filter(Work.publication_year >= from_year)
+                if to_year is not None:
+                    works_query = works_query.filter(Work.publication_year <= to_year)
+            works_query = works_query.group_by(Authorship.author_id)
+            per_id_works = {aid: cnt for aid, cnt in works_query.all()}
+
+            # Batch query: cited_by count per author_id
+            cited_query = (
+                self.session.query(
+                    Authorship.author_id,
+                    func.sum(Work.cited_by_count),
+                )
+                .join(Work, Authorship.work_id == Work.id)
+                .filter(Authorship.author_id.in_(all_alias_ids))
+            )
+            if from_year is not None or to_year is not None:
+                if from_year is not None:
+                    cited_query = cited_query.filter(Work.publication_year >= from_year)
+                if to_year is not None:
+                    cited_query = cited_query.filter(Work.publication_year <= to_year)
+            cited_query = cited_query.group_by(Authorship.author_id)
+            per_id_cited = {aid: (cnt or 0) for aid, cnt in cited_query.all()}
+
+            # Aggregate per canonical author
+            for author_id, all_ids in author_id_to_all_ids.items():
+                merged_works_map[author_id] = sum(
+                    per_id_works.get(aid, 0) for aid in all_ids
+                )
+                merged_cited_map[author_id] = sum(
+                    per_id_cited.get(aid, 0) for aid in all_ids
+                )
+
         results = []
         for author, works_count, cited_by_count in rows:
-            merged_count = works_count
-            merged_cited = cited_by_count
-            if author.alias_ids:
-                if from_year is not None or to_year is not None:
-                    merged_count = self._get_merged_works_count_by_year(
-                        author.id, from_year, to_year
-                    )
-                    merged_cited = self._get_merged_cited_by_count_by_year(
-                        author.id, from_year, to_year
-                    )
-                else:
-                    merged_count = self.get_merged_works_count(author.id)
-                    merged_cited = self._get_merged_cited_by_count_by_year(author.id)
+            if author.id in merged_works_map:
+                merged_count = merged_works_map[author.id]
+                merged_cited = merged_cited_map[author.id]
+            else:
+                merged_count = works_count
+                merged_cited = cited_by_count
             results.append((author, merged_count, merged_cited))
 
         # Re-sort by merged count to keep ordering stable when aliases exist
@@ -751,17 +810,49 @@ class AuthorRepository:
         if not rows:
             return [], 0
 
-        # Build alias -> canonical map
+        # Collect all author IDs from the affiliation query results
+        result_author_ids = {author_id for author_id, _ in rows}
+
+        # Build alias -> canonical map using only relevant authors
+        # First, find canonical authors that have aliases overlapping with our result set
         alias_to_canonical = {}
         canonical_rows = (
             self.session.query(Author.id, Author.alias_ids)
             .filter(Author.is_canonical == True)
             .filter(Author.alias_ids.isnot(None))
+            .filter(Author.id.in_(result_author_ids))
             .all()
         )
-        for canonical_id, alias_ids in canonical_rows:
+        # Also find canonical authors whose aliases appear in results
+        # by checking which result IDs are non-canonical
+        non_canonical_ids = result_author_ids - {r[0] for r in canonical_rows}
+        if non_canonical_ids:
+            # Find canonical authors whose alias_ids contain any of these IDs
+            # Use LIKE filters to narrow the search instead of loading all canonical authors
+            like_filters = [
+                Author.alias_ids.like(f"%{aid}%")
+                for aid in non_canonical_ids
+            ]
+            alias_canonical_rows = (
+                self.session.query(Author.id, Author.alias_ids)
+                .filter(Author.is_canonical == True)
+                .filter(Author.alias_ids.isnot(None))
+                .filter(or_(*like_filters))
+                .all()
+            )
+            for canonical_id, alias_ids_str in alias_canonical_rows:
+                try:
+                    aliases = json.loads(alias_ids_str)
+                except Exception:
+                    aliases = []
+                for alias in aliases:
+                    if alias in non_canonical_ids:
+                        alias_to_canonical[alias] = canonical_id
+
+        # Also map aliases from canonical authors found directly
+        for canonical_id, alias_ids_str in canonical_rows:
             try:
-                aliases = json.loads(alias_ids)
+                aliases = json.loads(alias_ids_str)
             except Exception:
                 aliases = []
             for alias in aliases:
@@ -777,26 +868,62 @@ class AuthorRepository:
         if total == 0:
             return [], 0
 
-        # Fetch author records
-        author_ids = list(counts.keys())
+        # Sort and paginate
+        sorted_ids = sorted(counts.keys(), key=lambda aid: counts[aid], reverse=True)
+        paged_ids = sorted_ids[offset:offset + limit]
+
+        # Fetch author records only for the current page
         authors = (
             self.session.query(Author)
-            .filter(Author.id.in_(author_ids))
+            .filter(Author.id.in_(paged_ids))
             .all()
         )
         author_map = {author.id: author for author in authors}
 
-        # Sort and paginate
-        sorted_ids = sorted(counts.keys(), key=lambda aid: counts[aid], reverse=True)
-        paged_ids = sorted_ids[offset:offset + limit]
+        # Batch-compute cited_by_count for all paged authors at once
+        # Collect all IDs (canonical + aliases) for the paged authors
+        all_author_ids_for_cited = []
+        author_id_to_all_ids = {}
+        for author_id in paged_ids:
+            author = author_map.get(author_id)
+            if not author:
+                continue
+            all_ids = [author_id]
+            if author.alias_ids:
+                try:
+                    all_ids.extend(json.loads(author.alias_ids))
+                except Exception:
+                    pass
+            author_id_to_all_ids[author_id] = all_ids
+            all_author_ids_for_cited.extend(all_ids)
+
+        # Single query to get cited_by_count for all authors at once
+        cited_counts = {}
+        if all_author_ids_for_cited:
+            cited_rows = (
+                self.session.query(
+                    Authorship.author_id,
+                    func.sum(Work.cited_by_count),
+                )
+                .join(Work, Authorship.work_id == Work.id)
+                .filter(Authorship.author_id.in_(all_author_ids_for_cited))
+                .group_by(Authorship.author_id)
+                .all()
+            )
+            per_id_cited = {aid: cnt or 0 for aid, cnt in cited_rows}
+
+            # Aggregate cited counts by canonical author
+            for author_id, all_ids in author_id_to_all_ids.items():
+                cited_counts[author_id] = sum(
+                    per_id_cited.get(aid, 0) for aid in all_ids
+                )
 
         results = []
         for author_id in paged_ids:
             author = author_map.get(author_id)
             if not author:
                 continue
-            cited_by_count = self._get_merged_cited_by_count_by_year(author.id)
-            results.append((author, counts[author_id], cited_by_count))
+            results.append((author, counts[author_id], cited_counts.get(author_id, 0)))
 
         return results, total
 

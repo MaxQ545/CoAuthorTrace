@@ -143,6 +143,7 @@ class Authorship(Base):
         Index("idx_authorship_work", "work_id"),
         Index("idx_authorship_position", "author_position"),
         Index("idx_authorship_author_work", "author_id", "work_id"),
+        Index("idx_authorship_raw_affiliation", "raw_affiliation"),
     )
 
 
