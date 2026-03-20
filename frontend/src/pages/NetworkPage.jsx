@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuthor } from '../hooks/queries';
 import { useNetworkStream } from '../hooks/useNetworkStream';
 import NetworkGraph from '../components/NetworkGraph';
@@ -7,15 +7,18 @@ import AuthorSelector from '../components/AuthorSelector';
 import NetworkProgress from '../components/NetworkProgress';
 import { useTimeFilter } from '../contexts/TimeFilterContext';
 import { exportToCSV } from '../utils/export';
+import api from '../api/client';
+import { toast } from 'sonner';
 import {
   Network, Users, Play, RotateCcw, Settings2,
-  ChevronDown, ChevronUp, Info, Waypoints, AlertTriangle, Download,
+  ChevronDown, ChevronUp, Info, Waypoints, AlertTriangle, Download, Share2,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 function NetworkPage() {
   const { authorId } = useParams();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { timeRange } = useTimeFilter();
 
   useEffect(() => {
@@ -26,10 +29,19 @@ function NetworkPage() {
   // Seed authors selected by the user
   const [seedAuthors, setSeedAuthors] = useState([]);
 
-  // Expansion parameters
-  const [maxDepth, setMaxDepth] = useState(3);
-  const [topK, setTopK] = useState(20);
-  const [maxNodes, setMaxNodes] = useState(500);
+  // Expansion parameters (initialize from URL if present)
+  const [maxDepth, setMaxDepth] = useState(() => {
+    const v = parseInt(searchParams.get('depth'));
+    return v >= 1 && v <= 5 ? v : 3;
+  });
+  const [topK, setTopK] = useState(() => {
+    const v = parseInt(searchParams.get('topK'));
+    return v >= 5 && v <= 50 ? v : 20;
+  });
+  const [maxNodes, setMaxNodes] = useState(() => {
+    const v = parseInt(searchParams.get('maxNodes'));
+    return v >= 100 && v <= 2000 ? v : 500;
+  });
   const [showAdvanced, setShowAdvanced] = useState(false);
 
   // Graph data accumulated from SSE
@@ -86,6 +98,58 @@ function NetworkPage() {
       }, 500);
     }
   }, []);
+
+  // Load seed authors from URL ?seeds= param on mount
+  const seedsInitRef = useRef(false);
+  useEffect(() => {
+    if (seedsInitRef.current || authorId) return; // skip if legacy route or already loaded
+    seedsInitRef.current = true;
+    const seedsParam = searchParams.get('seeds');
+    if (!seedsParam) return;
+    const ids = seedsParam.split(',').filter(Boolean);
+    if (ids.length === 0) return;
+    Promise.allSettled(ids.map(id => api.getAuthor(id)))
+      .then(results => {
+        const authors = results
+          .filter(r => r.status === 'fulfilled' && r.value)
+          .map(r => ({
+            id: r.value.id,
+            display_name: r.value.display_name,
+            institution: r.value.primary_institution_name || r.value.last_known_institution_name || null,
+            works_count: r.value.works_count,
+          }));
+        if (authors.length > 0) {
+          setSeedAuthors(authors);
+        }
+      });
+  }, []); // run once on mount
+
+  // Sync seed authors and settings to URL search params
+  const urlSyncRef = useRef(false);
+  useEffect(() => {
+    // Skip the first render to avoid overwriting URL params before seeds load
+    if (!urlSyncRef.current) {
+      urlSyncRef.current = true;
+      // Only skip if we have seeds param in URL (waiting for fetch)
+      if (searchParams.get('seeds') && seedAuthors.length === 0) return;
+    }
+    if (seedAuthors.length === 0) {
+      // Clear params when no seeds (but don't clear if on legacy route)
+      if (!authorId && searchParams.toString()) {
+        setSearchParams({}, { replace: true });
+      }
+      return;
+    }
+    // Don't update URL if on legacy /network/:authorId route
+    if (authorId) return;
+    const params = {
+      seeds: seedAuthors.map(a => a.id).join(','),
+    };
+    if (maxDepth !== 3) params.depth = String(maxDepth);
+    if (topK !== 20) params.topK = String(topK);
+    if (maxNodes !== 500) params.maxNodes = String(maxNodes);
+    setSearchParams(params, { replace: true });
+  }, [seedAuthors, maxDepth, topK, maxNodes, authorId]);
 
   // Flush batched updates to vis-network and state
   const flushUpdates = useCallback(() => {
@@ -321,6 +385,22 @@ function NetworkPage() {
               <Settings2 size={14} />
               {showAdvanced ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
             </button>
+
+            {seedAuthors.length > 0 && (
+              <button
+                onClick={() => {
+                  navigator.clipboard.writeText(window.location.href).then(() => {
+                    toast.success('链接已复制');
+                  }).catch(() => {
+                    toast.error('复制失败');
+                  });
+                }}
+                className="inline-flex items-center gap-1.5 px-3 py-2.5 text-muted-foreground hover:text-foreground hover:bg-secondary/50 rounded-xl transition-colors text-sm"
+                title="复制分享链接"
+              >
+                <Share2 size={14} />
+              </button>
+            )}
           </div>
         </div>
 
