@@ -78,6 +78,10 @@ class ApiClient {
     return this.request(`/authors/${authorId}/network-metrics${suffix}`);
   }
 
+  async getPublicationTimeline(authorId) {
+    return this.request(`/authors/${authorId}/publication-timeline`);
+  }
+
   // Institution endpoints
   async getInstitutions({ query = null, limit = null, offset = 0, refresh = false } = {}) {
     const params = new URLSearchParams();

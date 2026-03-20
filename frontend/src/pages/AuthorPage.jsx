@@ -118,6 +118,12 @@ function AuthorPage() {
                 >
                   <Network size={14} /> 合作网络
                 </Link>
+                <Link
+                  to={`/compare?a=${authorId}`}
+                  className="inline-flex items-center gap-1.5 px-3 py-1 bg-orange-500/10 text-orange-600 dark:text-orange-400 text-sm font-medium rounded-full hover:bg-orange-500/20 transition-colors"
+                >
+                  <Share2 size={14} /> 对比
+                </Link>
               </div>
 
               <div className="flex items-center gap-2 text-muted-foreground">

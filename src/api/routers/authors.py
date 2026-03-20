@@ -577,6 +577,22 @@ async def get_author(
     )
 
 
+@router.get("/{author_id}/publication-timeline")
+async def get_publication_timeline(
+    author_id: str,
+    db: Session = Depends(get_db),
+):
+    """
+    Get publication counts grouped by year for an author.
+
+    Returns a list of {year, count} objects for building timeline charts.
+    """
+    repo = AuthorRepository(db)
+    canonical_id = repo.get_canonical_id(author_id)
+    timeline = repo.get_publication_timeline(canonical_id)
+    return {"author_id": canonical_id, "timeline": timeline}
+
+
 @router.get("/{author_id}/top-relations", response_model=TopRelationsResponse)
 async def get_top_relations(
     author_id: str,

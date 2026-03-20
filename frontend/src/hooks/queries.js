@@ -14,6 +14,7 @@ export const queryKeys = {
     ['authorCollaborators', authorId, fromYear, toYear],
   authorTopRelations: (authorId, topK) =>
     ['authorTopRelations', authorId, topK],
+  publicationTimeline: (authorId) => ['publicationTimeline', authorId],
   networkMetrics: (authorId) => ['networkMetrics', authorId],
   coAuthoredPapers: (authorId, collaboratorId, limit, offset, sortBy, sortOrder, fromYear, toYear) =>
     ['coAuthoredPapers', authorId, collaboratorId, limit, offset, sortBy, sortOrder, fromYear, toYear],
@@ -65,6 +66,19 @@ export function useAuthor(authorId) {
     queryKey: queryKeys.author(authorId),
     queryFn: () => api.getAuthor(authorId),
     enabled: !!authorId,
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Publication timeline (works count by year)
+// ---------------------------------------------------------------------------
+export function usePublicationTimeline(authorId) {
+  return useQuery({
+    queryKey: queryKeys.publicationTimeline(authorId),
+    queryFn: () => api.getPublicationTimeline(authorId),
+    enabled: !!authorId,
+    staleTime: 10 * 60 * 1000,
+    select: (data) => data.timeline || [],
   });
 }
 
