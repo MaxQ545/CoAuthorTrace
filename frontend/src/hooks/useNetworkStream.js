@@ -30,16 +30,24 @@ export function useNetworkStream() {
   const eventSourceRef = useRef(null);
   const callbacksRef = useRef({});
   const stateRef = useRef('idle');
+  const retryCountRef = useRef(0);
+  const lastParamsRef = useRef(null);
+  const maxRetries = 3;
+  const retryDelays = [2000, 4000, 8000];
 
   // Keep a ref to state to avoid stale closure in onerror
   useEffect(() => {
     stateRef.current = state;
   }, [state]);
 
-  const connect = useCallback((params, callbacks) => {
+  const connect = useCallback((params, callbacks, isRetry = false) => {
     // params: { authorIds, maxDepth, topK, maxNodes, fromYear, toYear }
     // callbacks: { onNode, onEdge, onProgress, onConnected, onComponent, onComplete, onError }
-    callbacksRef.current = callbacks || {};
+    if (!isRetry) {
+      callbacksRef.current = callbacks || {};
+      retryCountRef.current = 0;
+    }
+    lastParamsRef.current = params;
 
     // Close existing connection
     if (eventSourceRef.current) {
@@ -49,8 +57,10 @@ export function useNetworkStream() {
 
     // Reset state
     setState('connecting');
-    setProgress(null);
-    setError(null);
+    if (!isRetry) {
+      setProgress(null);
+      setError(null);
+    }
 
     const searchParams = new URLSearchParams({
       author_ids: params.authorIds.join(','),
@@ -129,15 +139,30 @@ export function useNetworkStream() {
       eventSourceRef.current = null;
     });
 
-    // Browser-level connection error
+    // Browser-level connection error with reconnection
     es.onerror = () => {
       if (es.readyState === EventSource.CLOSED) {
-        // Only set error if we didn't already complete
+        // Only attempt reconnect if we didn't already complete
         if (stateRef.current !== 'complete') {
-          setState('error');
-          setError('Connection closed unexpectedly');
+          es.close();
+          eventSourceRef.current = null;
+
+          if (retryCountRef.current < maxRetries && stateRef.current === 'streaming') {
+            const delay = retryDelays[retryCountRef.current];
+            retryCountRef.current += 1;
+            setError(`Connection lost, reconnecting (${retryCountRef.current}/${maxRetries})...`);
+            setTimeout(() => {
+              if (lastParamsRef.current) {
+                connect(lastParamsRef.current, null, true);
+              }
+            }, delay);
+          } else {
+            setState('error');
+            setError('Connection closed unexpectedly');
+          }
+        } else {
+          eventSourceRef.current = null;
         }
-        eventSourceRef.current = null;
       }
     };
   }, []);

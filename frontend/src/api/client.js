@@ -28,7 +28,9 @@ class ApiClient {
         window.location.href = '/admin/login';
         throw new Error('Session expired');
       }
-      throw new Error(`API Error: ${response.status}`);
+      const errorData = await response.json().catch(() => null);
+      const detail = errorData?.detail || `HTTP ${response.status}`;
+      throw new Error(detail);
     }
 
     return response.json();

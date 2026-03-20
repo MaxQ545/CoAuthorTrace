@@ -17,6 +17,11 @@ function NetworkPage() {
   const navigate = useNavigate();
   const { timeRange } = useTimeFilter();
 
+  useEffect(() => {
+    document.title = '合作网络 - CoAuthorTrace';
+    return () => { document.title = '论文合作者追踪系统'; };
+  }, []);
+
   // Seed authors selected by the user
   const [seedAuthors, setSeedAuthors] = useState([]);
 

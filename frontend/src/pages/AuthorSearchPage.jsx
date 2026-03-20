@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useAuthorSearch } from '../hooks/queries';
 import SearchBox from '../components/SearchBox';
@@ -9,6 +10,11 @@ function AuthorSearchPage() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const query = searchParams.get('q') || '';
+
+  useEffect(() => {
+    document.title = query ? `搜索: ${query} - CoAuthorTrace` : '搜索 - CoAuthorTrace';
+    return () => { document.title = '论文合作者追踪系统'; };
+  }, [query]);
 
   const { data, isLoading: loading, error } = useAuthorSearch(query, 50, 0, true);
   const results = data?.results || [];
