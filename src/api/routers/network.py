@@ -7,11 +7,10 @@ co-authorship network building from one or more seed authors.
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Query, HTTPException
+from fastapi import APIRouter, Query, HTTPException
 from fastapi.responses import StreamingResponse
-from sqlalchemy.orm import Session
 
-from src.api.deps import get_db
+from src.database.models import get_session
 from src.api.services.network_builder import (
     NetworkBuilder,
     DEFAULT_MAX_DEPTH,
@@ -61,7 +60,6 @@ async def expand_network(
     to_year: Optional[int] = Query(
         None, ge=1900, le=2100, description="Filter collaborations to this year",
     ),
-    db: Session = Depends(get_db),
 ):
     """
     Progressively expand a co-authorship network via Server-Sent Events.
@@ -110,19 +108,26 @@ async def expand_network(
             detail="Maximum 10 seed authors allowed",
         )
 
-    builder = NetworkBuilder(
-        db=db,
-        seed_author_ids=ids,
-        max_depth=max_depth,
-        max_nodes=max_nodes,
-        top_k=top_k,
-        min_collab_count=min_collab_count,
-        from_year=from_year,
-        to_year=to_year,
-    )
+    async def _stream_with_session():
+        db = get_session()
+        try:
+            builder = NetworkBuilder(
+                db=db,
+                seed_author_ids=ids,
+                max_depth=max_depth,
+                max_nodes=max_nodes,
+                top_k=top_k,
+                min_collab_count=min_collab_count,
+                from_year=from_year,
+                to_year=to_year,
+            )
+            async for event in builder.stream():
+                yield event
+        finally:
+            db.close()
 
     return StreamingResponse(
-        builder.stream(),
+        _stream_with_session(),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",

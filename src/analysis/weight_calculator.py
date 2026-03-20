@@ -5,7 +5,7 @@ Implements the collaboration weight formula:
 Weight = BaseWeight * PositionFactor * TimeFactor
 """
 import math
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 from sqlalchemy import func
@@ -115,7 +115,7 @@ class WeightCalculator:
             return 0.5  # Default for unknown dates
 
         if reference_date is None:
-            reference_date = datetime.utcnow()
+            reference_date = datetime.now(timezone.utc)
 
         days_since = (reference_date - publication_date).days
 

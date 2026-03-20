@@ -109,13 +109,19 @@ class CollaborationRepository:
         if not other_ids:
             return {}
 
-        # Fetch all collaborations for this author in one query
+        # Fetch only relevant collaborations between author and other_ids
         all_collabs = (
             self.session.query(Collaboration)
             .filter(
                 or_(
-                    Collaboration.author_id_1 == author_id,
-                    Collaboration.author_id_2 == author_id,
+                    and_(
+                        Collaboration.author_id_1 == author_id,
+                        Collaboration.author_id_2.in_(other_ids),
+                    ),
+                    and_(
+                        Collaboration.author_id_2 == author_id,
+                        Collaboration.author_id_1.in_(other_ids),
+                    ),
                 )
             )
             .all()

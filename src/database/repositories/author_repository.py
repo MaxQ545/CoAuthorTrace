@@ -436,21 +436,29 @@ class AuthorRepository:
             except (json.JSONDecodeError, ValueError, TypeError) as e:
                 logger.warning("Failed to parse alias_ids: %s", e)
 
-        # Get info for each ID
+        # Batch-fetch all sub-authors in one query
+        authors_by_id = {
+            a.id: a
+            for a in self.session.query(Author).filter(Author.id.in_(all_ids)).all()
+        }
+
+        # Batch-fetch works counts in one query
+        works_counts = dict(
+            self.session.query(Authorship.author_id, func.count(Authorship.id))
+            .filter(Authorship.author_id.in_(all_ids))
+            .group_by(Authorship.author_id)
+            .all()
+        )
+
+        # Build results
         results = []
         for aid in all_ids:
-            a = self.session.query(Author).filter(Author.id == aid).first()
+            a = authors_by_id.get(aid)
             if a:
-                # Count works for this specific ID
-                works = (
-                    self.session.query(func.count(Authorship.id))
-                    .filter(Authorship.author_id == aid)
-                    .scalar() or 0
-                )
                 results.append({
                     "id": aid,
                     "orcid": a.orcid,
-                    "works_count": works,
+                    "works_count": works_counts.get(aid, 0),
                 })
 
         # Sort by works_count descending
@@ -984,11 +992,18 @@ class AuthorRepository:
             except (json.JSONDecodeError, ValueError, TypeError) as e:
                 logger.warning("Failed to parse alias_ids: %s", e)
 
-        # Build query - sum cited_by_count of all distinct works by this author
+        # Build subquery to get distinct work IDs for this author
+        distinct_work_ids = (
+            self.session.query(Authorship.work_id)
+            .filter(Authorship.author_id.in_(all_ids))
+            .distinct()
+            .subquery()
+        )
+
+        # Sum cited_by_count over distinct works only
         query = (
             self.session.query(func.sum(Work.cited_by_count))
-            .join(Authorship, Work.id == Authorship.work_id)
-            .filter(Authorship.author_id.in_(all_ids))
+            .filter(Work.id.in_(distinct_work_ids))
         )
 
         if from_year is not None:
