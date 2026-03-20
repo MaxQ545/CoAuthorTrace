@@ -77,6 +77,12 @@ const NetworkGraph = forwardRef(function NetworkGraph(
   const visEdgesRef = useRef(null);
   const [loading, setLoading] = useState(true);
   const initRef = useRef(false);
+  const onNodeClickRef = useRef(onNodeClick);
+
+  // Keep the ref up-to-date with latest callback
+  useEffect(() => {
+    onNodeClickRef.current = onNodeClick;
+  }, [onNodeClick]);
 
   // Initialize vis-network (once for progressive mode, or on data change for legacy)
   const initNetwork = useCallback(async (initialNodes = [], initialEdges = []) => {
@@ -208,8 +214,8 @@ const NetworkGraph = forwardRef(function NetworkGraph(
     );
 
     networkRef.current.on('click', (params) => {
-      if (params.nodes.length > 0 && onNodeClick) {
-        onNodeClick(params.nodes[0]);
+      if (params.nodes.length > 0 && onNodeClickRef.current) {
+        onNodeClickRef.current(params.nodes[0]);
       }
     });
 
@@ -223,7 +229,7 @@ const NetworkGraph = forwardRef(function NetworkGraph(
     }
 
     initRef.current = true;
-  }, [progressive, centerNodeId, onNodeClick]);
+  }, [progressive, centerNodeId]);
 
   // Legacy mode: reinit on data change
   useEffect(() => {

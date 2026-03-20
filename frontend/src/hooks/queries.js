@@ -54,6 +54,7 @@ export function useAuthorSearch(query, limit = 50, offset = 0, includeAllIds = t
     queryKey: queryKeys.authorSearch(query, limit, offset, includeAllIds, fuzzy),
     queryFn: () => api.searchAuthors(query, limit, offset, includeAllIds, fuzzy),
     enabled: !!query,
+    staleTime: 30 * 1000,
   });
 }
 
@@ -65,6 +66,7 @@ export function useAuthor(authorId) {
     queryKey: queryKeys.author(authorId),
     queryFn: () => api.getAuthor(authorId),
     enabled: !!authorId,
+    staleTime: 2 * 60 * 1000,
   });
 }
 
@@ -76,6 +78,7 @@ export function useAuthorCollaborators(authorId, limit = 30, fromYear = null, to
     queryKey: queryKeys.authorCollaborators(authorId, fromYear, toYear),
     queryFn: () => api.getAuthorCollaborators(authorId, limit, fromYear, toYear),
     enabled: !!authorId,
+    staleTime: 5 * 60 * 1000,
     select: (data) => data.collaborators || [],
   });
 }
@@ -88,6 +91,7 @@ export function useTopRelations(authorId, topK = 20) {
     queryKey: queryKeys.authorTopRelations(authorId, topK),
     queryFn: () => api.getAuthorTopRelations(authorId, topK),
     enabled: !!authorId,
+    staleTime: 5 * 60 * 1000,
   });
 }
 
@@ -112,6 +116,7 @@ export function useCoAuthoredPapers(authorId, collaboratorId, limit = 10, offset
     queryKey: queryKeys.coAuthoredPapers(authorId, collaboratorId, limit, offset, sortBy, sortOrder, fromYear, toYear),
     queryFn: () => api.getCoAuthoredPapers(authorId, collaboratorId, limit, offset, sortBy, sortOrder, fromYear, toYear),
     enabled: !!authorId && !!collaboratorId,
+    staleTime: 5 * 60 * 1000,
   });
 }
 
@@ -133,7 +138,7 @@ export function useInstitutions(query = null) {
 export function useInstitutionRanking(institutionId) {
   return useQuery({
     queryKey: queryKeys.institutionRanking(institutionId),
-    queryFn: () => api.getInstitutionRanking(institutionId, null, 100, 0, null, null, false),
+    queryFn: () => api.getInstitutionRanking(institutionId, null, 100, 0, null, null, true),
     enabled: !!institutionId,
   });
 }

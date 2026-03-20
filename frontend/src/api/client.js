@@ -191,7 +191,7 @@ class ApiClient {
   async reorderQueue(orderedIds) {
     return this.request('/admin/crawl/reorder', {
       method: 'PUT',
-      body: JSON.stringify({ ordered_ids: orderedIds }),
+      body: JSON.stringify({ items: orderedIds.map((id, i) => ({ institution_id: id, position: i })) }),
     });
   }
 
