@@ -120,7 +120,7 @@ class ReorderRequest(BaseModel):
 async def admin_login(body: LoginRequest):
     """Authenticate with admin password and receive a JWT."""
     if not verify_password(body.password):
-        return {"ok": False, "error": "Invalid password"}
+        raise HTTPException(status_code=401, detail="Invalid password")
     token = create_access_token()
     return {"ok": True, "token": token}
 
@@ -331,7 +331,7 @@ async def start_crawl(
     institution_ids.sort(key=sort_key)
 
     # Set queued status for waiting institutions
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     for idx, inst_id in enumerate(institution_ids):
         state = state_map.get(inst_id)
         if state:

@@ -1,7 +1,7 @@
 """
 SQLAlchemy ORM models for Coauthor Tracing System.
 """
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 from contextlib import contextmanager
 
@@ -45,8 +45,8 @@ class Author(Base):
     cited_by_count = Column(Integer, default=0)
     last_known_institution_id = Column(String(50), nullable=True)
     last_known_institution_name = Column(String(500), nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
     # Author deduplication fields
     is_canonical = Column(Boolean, default=True)  # True if this is the primary record
@@ -81,7 +81,7 @@ class InstitutionStats(Base):
     institution_id = Column(String(50), primary_key=True)
     institution_name = Column(String(500), nullable=True)
     author_count = Column(Integer, default=0)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
     __table_args__ = (
         Index("idx_inststats_count", "author_count"),
@@ -105,8 +105,8 @@ class Work(Base):
     source_name = Column(String(500), nullable=True)
     is_open_access = Column(Boolean, default=False)
     concepts = Column(Text, nullable=True)  # JSON: [{"id", "display_name", "level", "score"}]
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
     # Relationships
     authorships = relationship("Authorship", back_populates="work")
@@ -131,7 +131,7 @@ class Authorship(Base):
     is_corresponding = Column(Boolean, default=False)
     raw_author_name = Column(String(500), nullable=True)  # Name as appears on paper
     raw_affiliation = Column(Text, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     # Relationships
     author = relationship("Author", back_populates="authorships")
@@ -158,7 +158,7 @@ class Collaboration(Base):
     total_weight = Column(Float, default=0.0)  # Sum of weighted collaborations
     first_collaboration = Column(DateTime, nullable=True)
     last_collaboration = Column(DateTime, nullable=True)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
     # Relationships
     author_1 = relationship("Author", foreign_keys=[author_id_1])
@@ -190,7 +190,7 @@ class RelationshipScore(Base):
     combined_score = Column(Float, nullable=True)   # Combined final score
 
     # Metadata
-    computed_at = Column(DateTime, default=datetime.utcnow)
+    computed_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     model_version = Column(String(50), nullable=True)
 
     # Relationships
@@ -214,7 +214,7 @@ class CrawlTarget(Base):
     institution_id = Column(String(50), unique=True, nullable=False)
     institution_name = Column(String(500), nullable=False)
     enabled = Column(Boolean, default=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
 
 class CrawlState(Base):
@@ -229,8 +229,8 @@ class CrawlState(Base):
     works_crawled = Column(Integer, default=0)
     status = Column(String(50), default="idle")  # idle, running, completed, failed
     error_message = Column(Text, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
     __table_args__ = (
         Index("idx_crawl_scope", "scope_hash"),
@@ -269,8 +269,8 @@ class InstitutionCrawlState(Base):
     status = Column(String(50), default="idle")
     error_message = Column(Text, nullable=True)
 
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
     __table_args__ = (
         Index("idx_inst_crawl_institution", "institution_id"),
@@ -289,7 +289,7 @@ class PageVisit(Base):
     path = Column(String(500), nullable=False)
     author_id = Column(String(50), nullable=True)
     user_agent = Column(Text, nullable=True)
-    timestamp = Column(DateTime, default=datetime.utcnow)
+    timestamp = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     __table_args__ = (
         Index("idx_pagevisit_timestamp", "timestamp"),
