@@ -108,8 +108,22 @@ function AuthorCard({
 
         <div className="text-right text-sm">
           {showCollabCount ? (
-            <div className="text-primary font-medium">
-              {collabCount} 次合作
+            <div>
+              <div className="text-primary font-medium">
+                {collabCount} 次合作
+              </div>
+              {(() => {
+                const strength = Math.min(collabCount / 10, 1);
+                const barColor = strength > 0.7 ? 'bg-green-500' : strength >= 0.3 ? 'bg-yellow-500' : 'bg-gray-300';
+                return (
+                  <div className="mt-1 w-16 h-1.5 bg-muted rounded-full overflow-hidden ml-auto">
+                    <div
+                      className={`h-full rounded-full ${barColor}`}
+                      style={{ width: `${strength * 100}%` }}
+                    />
+                  </div>
+                );
+              })()}
             </div>
           ) : (
             <>

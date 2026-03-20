@@ -1,14 +1,42 @@
+import { useState } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useAuthorSearch } from '../hooks/queries';
 import SearchBox from '../components/SearchBox';
 import { motion } from 'framer-motion';
-import { User, Building2, FileText, Quote, Loader2, Search as SearchIcon } from 'lucide-react';
+import { User, Building2, FileText, Quote, Loader2, Search as SearchIcon, Clock } from 'lucide-react';
 import { cn } from '../lib/utils';
+
+const SEARCH_HISTORY_KEY = 'coauthor_search_history';
+const MAX_HISTORY = 5;
+
+function getSearchHistory() {
+  try {
+    return JSON.parse(localStorage.getItem(SEARCH_HISTORY_KEY)) || [];
+  } catch {
+    return [];
+  }
+}
+
+function saveToSearchHistory(query) {
+  if (!query || !query.trim()) return;
+  const trimmed = query.trim();
+  let history = getSearchHistory();
+  history = history.filter((q) => q !== trimmed);
+  history.unshift(trimmed);
+  history = history.slice(0, MAX_HISTORY);
+  localStorage.setItem(SEARCH_HISTORY_KEY, JSON.stringify(history));
+}
+
+function clearSearchHistory() {
+  localStorage.removeItem(SEARCH_HISTORY_KEY);
+}
 
 function AuthorSearchPage() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const query = searchParams.get('q') || '';
+  const [searchHistory, setSearchHistory] = useState(getSearchHistory);
+  const [showHistory, setShowHistory] = useState(false);
 
   const { data, isLoading: loading, error } = useAuthorSearch(query, 50, 0, true);
   const results = data?.results || [];
@@ -19,7 +47,22 @@ function AuthorSearchPage() {
   };
 
   const handleAuthorClick = (authorId) => {
+    if (query) {
+      saveToSearchHistory(query);
+      setSearchHistory(getSearchHistory());
+    }
     navigate(`/author/${authorId}`);
+  };
+
+  const handleHistoryClick = (historyQuery) => {
+    setShowHistory(false);
+    navigate(`/authors/search?q=${encodeURIComponent(historyQuery)}`);
+  };
+
+  const handleClearHistory = () => {
+    clearSearchHistory();
+    setSearchHistory([]);
+    setShowHistory(false);
   };
 
   return (
@@ -28,11 +71,46 @@ function AuthorSearchPage() {
       <div className="bg-secondary/30 rounded-2xl p-6 border border-border">
         <div className="max-w-2xl mx-auto space-y-4">
           <h1 className="text-2xl font-bold text-center text-foreground">作者搜索</h1>
-          <SearchBox
-            onSearch={handleSearch}
-            placeholder="输入作者姓名搜索..."
-            defaultValue={query}
-          />
+          <div
+            onFocus={() => { if (!query) setShowHistory(true); }}
+            onBlur={(e) => {
+              if (!e.currentTarget.contains(e.relatedTarget)) {
+                setTimeout(() => setShowHistory(false), 150);
+              }
+            }}
+          >
+            <SearchBox
+              onSearch={handleSearch}
+              placeholder="输入作者姓名搜索..."
+              defaultValue={query}
+            />
+            {showHistory && searchHistory.length > 0 && !query && (
+              <div className="mt-2 p-3 bg-background border border-border rounded-lg">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs text-muted-foreground flex items-center gap-1">
+                    <Clock size={12} /> 最近搜索
+                  </span>
+                  <button
+                    onClick={handleClearHistory}
+                    className="text-xs text-muted-foreground hover:text-destructive transition-colors"
+                  >
+                    清除历史
+                  </button>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {searchHistory.map((q) => (
+                    <button
+                      key={q}
+                      onMouseDown={(e) => { e.preventDefault(); handleHistoryClick(q); }}
+                      className="px-3 py-1 text-sm bg-secondary text-secondary-foreground rounded-full hover:bg-primary/10 hover:text-primary transition-colors"
+                    >
+                      {q}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
