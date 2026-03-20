@@ -1,9 +1,9 @@
-import { useEffect } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useAuthorSearch } from '../hooks/queries';
 import SearchBox from '../components/SearchBox';
 import { motion } from 'framer-motion';
-import { User, Building2, FileText, Quote, Loader2, Search as SearchIcon } from 'lucide-react';
+import { User, Building2, FileText, Quote, Loader2, Search as SearchIcon, X } from 'lucide-react';
 import { cn } from '../lib/utils';
 
 function AuthorSearchPage() {
@@ -11,12 +11,39 @@ function AuthorSearchPage() {
   const navigate = useNavigate();
   const query = searchParams.get('q') || '';
 
+  // Institution filter with debounce
+  const [institutionInput, setInstitutionInput] = useState('');
+  const [institutionFilter, setInstitutionFilter] = useState(null);
+  const debounceRef = useRef(null);
+
+  const handleInstitutionChange = useCallback((e) => {
+    const value = e.target.value;
+    setInstitutionInput(value);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      setInstitutionFilter(value.trim() || null);
+    }, 300);
+  }, []);
+
+  const clearInstitutionFilter = useCallback(() => {
+    setInstitutionInput('');
+    setInstitutionFilter(null);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+  }, []);
+
+  // Clean up debounce timer on unmount
+  useEffect(() => {
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+  }, []);
+
   useEffect(() => {
     document.title = query ? `搜索: ${query} - CoAuthorTrace` : '搜索 - CoAuthorTrace';
     return () => { document.title = '论文合作者追踪系统'; };
   }, [query]);
 
-  const { data, isLoading: loading, error } = useAuthorSearch(query, 50, 0, true);
+  const { data, isLoading: loading, error } = useAuthorSearch(query, 50, 0, true, false, institutionFilter);
   const results = data?.results || [];
   const total = data?.total || 0;
 
@@ -39,6 +66,28 @@ function AuthorSearchPage() {
             placeholder="输入作者姓名搜索..."
             defaultValue={query}
           />
+          {/* Institution Filter */}
+          <div className="relative">
+            <Building2 size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+            <input
+              type="text"
+              value={institutionInput}
+              onChange={handleInstitutionChange}
+              placeholder="筛选机构..."
+              className={cn(
+                "w-full pl-9 pr-9 py-2 rounded-lg border border-border bg-background text-foreground text-sm",
+                "placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary"
+              )}
+            />
+            {institutionInput && (
+              <button
+                onClick={clearInstitutionFilter}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+              >
+                <X size={16} />
+              </button>
+            )}
+          </div>
         </div>
       </div>
 

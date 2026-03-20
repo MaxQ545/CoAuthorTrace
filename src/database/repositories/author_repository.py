@@ -123,9 +123,16 @@ class AuthorRepository:
         offset: int = 0,
         canonical_only: bool = True,
         fuzzy: bool = False,
+        institution_filter: str = None,
     ) -> tuple[list[tuple[Author, int]], int]:
         """Search authors by name with total count."""
         base_filter = None
+
+        # Build institution filter clause
+        inst_clause = None
+        if institution_filter:
+            escaped_inst = _escape_like(institution_filter)
+            inst_clause = Author.last_known_institution_name.ilike(f"%{escaped_inst}%")
 
         if fuzzy:
             # Fuzzy match (case-insensitive partial match)
@@ -133,6 +140,8 @@ class AuthorRepository:
             base_filter = Author.display_name.ilike(f"%{_escape_like(query)}%")
             if canonical_only:
                 base_filter = base_filter & (Author.is_canonical == True)
+            if inst_clause is not None:
+                base_filter = base_filter & inst_clause
 
             total = (
                 self.session.query(func.count(Author.id))
@@ -145,6 +154,8 @@ class AuthorRepository:
             base_filter = Author.display_name == query
             if canonical_only:
                 base_filter = base_filter & (Author.is_canonical == True)
+            if inst_clause is not None:
+                base_filter = base_filter & inst_clause
 
             total = (
                 self.session.query(func.count(Author.id))
@@ -157,6 +168,8 @@ class AuthorRepository:
                 base_filter = func.lower(Author.display_name) == func.lower(query)
                 if canonical_only:
                     base_filter = base_filter & (Author.is_canonical == True)
+                if inst_clause is not None:
+                    base_filter = base_filter & inst_clause
                 total = (
                     self.session.query(func.count(Author.id))
                     .filter(base_filter)

@@ -54,7 +54,7 @@ class ApiClient {
   }
 
   // Author endpoints
-  async searchAuthors(query, limit = 20, offset = 0, includeAllIds = true, fuzzy = false) {
+  async searchAuthors(query, limit = 20, offset = 0, includeAllIds = true, fuzzy = false, institution = null) {
     const params = new URLSearchParams({
       q: query,
       limit,
@@ -62,6 +62,7 @@ class ApiClient {
       include_all_ids: includeAllIds,
       fuzzy
     });
+    if (institution) params.append('institution', institution);
     return this.request(`/authors/search?${params}`);
   }
 

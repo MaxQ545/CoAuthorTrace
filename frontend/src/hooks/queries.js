@@ -14,8 +14,8 @@ const STALE_TIME_STATIC = 10 * 60 * 1000;        // 10 min — rarely-changing d
 // ---------------------------------------------------------------------------
 export const queryKeys = {
   systemStats: ['systemStats'],
-  authorSearch: (query, limit, offset, includeAllIds, fuzzy) =>
-    ['authorSearch', query, limit, offset, includeAllIds, fuzzy],
+  authorSearch: (query, limit, offset, includeAllIds, fuzzy, institution) =>
+    ['authorSearch', query, limit, offset, includeAllIds, fuzzy, institution],
   author: (authorId) => ['author', authorId],
   authorCollaborators: (authorId, fromYear, toYear) =>
     ['authorCollaborators', authorId, fromYear, toYear],
@@ -58,10 +58,10 @@ export function useSystemStats() {
 // ---------------------------------------------------------------------------
 // Author search
 // ---------------------------------------------------------------------------
-export function useAuthorSearch(query, limit = 50, offset = 0, includeAllIds = true, fuzzy = false) {
+export function useAuthorSearch(query, limit = 50, offset = 0, includeAllIds = true, fuzzy = false, institution = null) {
   return useQuery({
-    queryKey: queryKeys.authorSearch(query, limit, offset, includeAllIds, fuzzy),
-    queryFn: () => api.searchAuthors(query, limit, offset, includeAllIds, fuzzy),
+    queryKey: queryKeys.authorSearch(query, limit, offset, includeAllIds, fuzzy, institution),
+    queryFn: () => api.searchAuthors(query, limit, offset, includeAllIds, fuzzy, institution),
     enabled: !!query,
     staleTime: STALE_TIME_ADMIN,
   });

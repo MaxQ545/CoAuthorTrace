@@ -275,6 +275,7 @@ async def search_authors(
     include_aliases: bool = Query(False, description="Include non-canonical (alias) records"),
     include_all_ids: bool = Query(False, description="Include detailed info for all merged IDs"),
     fuzzy: bool = Query(False, description="Enable fuzzy matching (partial match)"),
+    institution: Optional[str] = Query(None, description="Filter by institution name (partial match)"),
     db: Session = Depends(get_db),
 ):
     """
@@ -289,11 +290,13 @@ async def search_authors(
     By default, only returns deduplicated (canonical) author records.
     Set include_aliases=true to see all records including duplicates.
     Set include_all_ids=true to get detailed info (ID, ORCID, works) for all merged IDs.
+    Optionally filter by institution name (partial match).
     """
     repo = AuthorRepository(db)
     canonical_only = not include_aliases
     authors_with_counts, total = repo.search_by_name_with_count(
-        q, limit=limit, offset=offset, canonical_only=canonical_only, fuzzy=fuzzy
+        q, limit=limit, offset=offset, canonical_only=canonical_only, fuzzy=fuzzy,
+        institution_filter=institution,
     )
 
     # Batch fetch cited_by counts and all_ids_info to avoid N+1 queries
