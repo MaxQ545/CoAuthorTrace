@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useSystemStats } from '../hooks/queries';
 import SearchBox from '../components/SearchBox';
@@ -8,6 +9,11 @@ import { ArrowRight, Users, BookOpen, Share2, Activity, Zap, Network, Search, Lo
 function HomePage() {
   const navigate = useNavigate();
   const { data: stats, isLoading: loading } = useSystemStats();
+
+  useEffect(() => {
+    document.title = 'CoAuthorTrace - 学术合作者追踪系统';
+    return () => { document.title = '论文合作者追踪系统'; };
+  }, []);
 
   const handleSearch = (query) => {
     navigate(`/authors/search?q=${encodeURIComponent(query)}`);

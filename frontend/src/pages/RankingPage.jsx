@@ -9,6 +9,11 @@ import { motion } from 'framer-motion';
 function RankingPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [institutionQuery, setInstitutionQuery] = useState('');
+
+  useEffect(() => {
+    document.title = '机构排行 - CoAuthorTrace';
+    return () => { document.title = '论文合作者追踪系统'; };
+  }, []);
   const [debouncedQuery, setDebouncedQuery] = useState('');
 
   const selectedInstitutionId = searchParams.get('institution_id');

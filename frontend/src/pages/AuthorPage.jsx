@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useAuthor, useAuthorCollaborators, useNetworkMetrics } from '../hooks/queries';
 import AuthorCard from '../components/AuthorCard';
@@ -32,8 +32,15 @@ function AuthorPage() {
   );
   const { data: metrics } = useNetworkMetrics(authorId);
 
-  const loading = authorLoading || collabLoading;
   const error = authorError ? '无法加载作者信息' : null;
+
+  // Set document title when author loads
+  useEffect(() => {
+    if (author?.display_name) {
+      document.title = `${author.display_name} - CoAuthorTrace`;
+    }
+    return () => { document.title = '论文合作者追踪系统'; };
+  }, [author?.display_name]);
 
   // Modal state for co-authored papers
   const [modalOpen, setModalOpen] = useState(false);
@@ -53,7 +60,7 @@ function AuthorPage() {
 
   };
 
-  if (loading) {
+  if (authorLoading) {
     return (
       <div className="flex flex-col items-center justify-center h-[60vh] text-muted-foreground">
         <Loader2 className="h-10 w-10 animate-spin mb-4 text-primary" />
@@ -270,7 +277,12 @@ function AuthorPage() {
           合作者列表 ({collaborators.length})
         </h2>
 
-        {collaborators.length > 0 ? (
+        {collabLoading ? (
+          <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
+            <Loader2 className="h-8 w-8 animate-spin mb-3 text-primary" />
+            <p>正在加载合作者...</p>
+          </div>
+        ) : collaborators.length > 0 ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {collaborators.map((collab, index) => (
               <AuthorCard
