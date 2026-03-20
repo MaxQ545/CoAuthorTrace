@@ -14,12 +14,20 @@ logging.basicConfig(level=logging.INFO)
 
 
 def main():
-    init_database()
+    try:
+        init_database()
+    except Exception as e:
+        logging.error("Failed to initialize database: %s", e)
+        sys.exit(1)
+
     session = get_session()
     try:
         repo = AuthorRepository(session)
         count = repo.refresh_institution_stats()
         logging.info("Refreshed institution stats: %s institutions", count)
+    except Exception as e:
+        logging.error("Failed to refresh institution stats: %s", e)
+        sys.exit(1)
     finally:
         session.close()
 

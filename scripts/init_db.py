@@ -14,10 +14,14 @@ from src.database.models import init_database
 
 def main():
     """Initialize database."""
-    print("Initializing database...")
-    engine = init_database()
-    print(f"Database initialized at: {engine.url}")
-    print("Done!")
+    try:
+        print("Initializing database...")
+        engine = init_database()
+        print(f"Database initialized at: {engine.url}")
+        print("Done!")
+    except Exception as e:
+        print(f"Error initializing database: {e}", file=sys.stderr)
+        sys.exit(1)
 
 
 if __name__ == "__main__":

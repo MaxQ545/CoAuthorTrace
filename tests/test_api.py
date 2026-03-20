@@ -1,18 +1,24 @@
 """
 Tests for API endpoints.
 """
+import os
+
 import pytest
 from fastapi.testclient import TestClient
 
 from src.api.main import create_app
 from src.database.models import init_database, get_engine, Base
 
+TEST_DATABASE_URL = os.environ.get(
+    "TEST_DATABASE_URL",
+    "postgresql://coauthor:coauthor@localhost:5432/coauthor_test",
+)
+
 
 @pytest.fixture(scope="module")
 def test_client():
     """Create test client with PostgreSQL test database."""
-    import os
-    os.environ["COAUTHOR_DATABASE__POSTGRES_URL"] = "postgresql://coauthor:coauthor@localhost:5432/coauthor_test"
+    os.environ["COAUTHOR_DATABASE__POSTGRES_URL"] = TEST_DATABASE_URL
     os.environ["COAUTHOR_DATABASE__REDIS_ENABLED"] = "false"
 
     # Reset cached engine/session so new settings take effect
