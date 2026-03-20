@@ -8,7 +8,7 @@ import NetworkProgress from '../components/NetworkProgress';
 import { useTimeFilter } from '../contexts/TimeFilterContext';
 import {
   Network, Users, Play, RotateCcw, Settings2,
-  ChevronDown, ChevronUp, Info, Waypoints,
+  ChevronDown, ChevronUp, Info, Waypoints, AlertTriangle,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -340,6 +340,14 @@ function NetworkPage() {
             </motion.div>
           )}
         </AnimatePresence>
+
+        {/* Parameter combination warning */}
+        {(maxDepth * topK > 100 || maxNodes > 1000) && (
+          <div className="flex items-center gap-2 text-amber-600 dark:text-amber-400 text-xs pt-2 border-t border-border">
+            <AlertTriangle size={14} className="shrink-0" />
+            <span>当前参数组合可能导致加载时间较长 (Current parameters may cause long loading times)</span>
+          </div>
+        )}
       </div>
 
       {/* Progress */}

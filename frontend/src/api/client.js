@@ -28,7 +28,18 @@ class ApiClient {
         window.location.href = '/admin/login';
         throw new Error('Session expired');
       }
-      throw new Error(`API Error: ${response.status}`);
+
+      // Try to extract detail message from JSON response body
+      let detail = `API Error: ${response.status}`;
+      try {
+        const body = await response.json();
+        if (body.detail) {
+          detail = typeof body.detail === 'string' ? body.detail : JSON.stringify(body.detail);
+        }
+      } catch {
+        // Response body is not JSON, use default message
+      }
+      throw new Error(detail);
     }
 
     return response.json();
