@@ -234,6 +234,7 @@ class CrawlState(Base):
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
     __table_args__ = (
+        UniqueConstraint("scope_hash", name="uq_crawl_scope_hash"),
         Index("idx_crawl_scope", "scope_hash"),
     )
 

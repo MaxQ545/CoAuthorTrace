@@ -6,7 +6,7 @@ import json
 from functools import lru_cache
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Path, Query
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -528,7 +528,7 @@ async def get_institution_ranking(
 
 @router.get("/{author_id}", response_model=AuthorResponse)
 async def get_author(
-    author_id: str,
+    author_id: str = Path(..., pattern=r"^A\d+$"),
     db: Session = Depends(get_db),
 ):
     """
@@ -584,7 +584,7 @@ async def get_author(
 
 @router.get("/{author_id}/top-relations", response_model=TopRelationsResponse)
 async def get_top_relations(
-    author_id: str,
+    author_id: str = Path(..., pattern=r"^A\d+$"),
     k: int = Query(None, ge=1, le=100, description="Number of relations"),
     score_type: str = Query(
         "combined_score",
@@ -661,7 +661,7 @@ async def get_top_relations(
 
 @router.get("/{author_id}/network-metrics", response_model=NetworkMetricsResponse)
 async def get_network_metrics(
-    author_id: str,
+    author_id: str = Path(..., pattern=r"^A\d+$"),
     full: bool = Query(True, description="Compute full graph metrics (slower)"),
     db: Session = Depends(get_db),
 ):
@@ -713,7 +713,7 @@ async def get_network_metrics(
 
 @router.get("/{author_id}/collaborators")
 async def get_collaborators(
-    author_id: str,
+    author_id: str = Path(..., pattern=r"^A\d+$"),
     limit: int = Query(50, ge=1, le=200, description="Maximum results"),
     from_year: Optional[int] = Query(None, ge=1900, le=2100, description="起始年份（包含）"),
     to_year: Optional[int] = Query(None, ge=1900, le=2100, description="结束年份（包含）"),
@@ -764,8 +764,8 @@ async def get_collaborators(
 
 @router.get("/{author_id}/co-authored-papers/{collaborator_id}", response_model=CoAuthoredPapersResponse)
 async def get_co_authored_papers(
-    author_id: str,
-    collaborator_id: str,
+    author_id: str = Path(..., pattern=r"^A\d+$"),
+    collaborator_id: str = Path(..., pattern=r"^A\d+$"),
     limit: int = Query(20, ge=1, le=100, description="每页数量"),
     offset: int = Query(0, ge=0, description="分页偏移"),
     sort_by: str = Query(

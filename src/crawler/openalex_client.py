@@ -351,7 +351,7 @@ class OpenAlexClient:
 def parse_work(
     work: dict,
     preferred_institution_ids: Optional[list[str]] = None,
-) -> tuple[dict, list[dict], list[dict]]:
+) -> Optional[tuple[dict, list[dict], list[dict]]]:
     """
     Parse OpenAlex work response into database-ready dicts.
 
@@ -361,8 +361,13 @@ def parse_work(
             when selecting the author's institution from a work.
 
     Returns:
-        Tuple of (work_dict, list of author_dicts, list of authorship_dicts)
+        Tuple of (work_dict, list of author_dicts, list of authorship_dicts),
+        or None if the work is missing critical fields (id, title).
     """
+    # Guard against malformed data missing critical fields
+    if "id" not in work or not work.get("id"):
+        return None
+
     # Parse work
     work_dict = {
         "id": work["id"].replace("https://openalex.org/", ""),

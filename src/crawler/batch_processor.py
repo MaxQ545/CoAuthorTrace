@@ -95,14 +95,16 @@ class BatchProcessor:
             self.session.add(work)
 
         try:
+            self.session.begin_nested()  # savepoint so rollback only affects works
             self.session.flush()
         except Exception as e:
             # Handle any remaining duplicates (race condition)
-            self.session.rollback()
+            self.session.rollback()  # rolls back to savepoint, authors stay intact
             logger.warning(f"Batch flush error, retrying one by one: {e}")
             for work_data in new_works:
                 try:
                     if not self.work_repo.exists(work_data["id"]):
+                        self.session.begin_nested()
                         work = Work(**work_data)
                         self.session.add(work)
                         self.session.flush()
