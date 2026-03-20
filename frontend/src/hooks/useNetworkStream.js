@@ -60,6 +60,9 @@ export function useNetworkStream() {
     });
     if (params.fromYear) searchParams.set('from_year', String(params.fromYear));
     if (params.toYear) searchParams.set('to_year', String(params.toYear));
+    if (params.minCollabCount != null && params.minCollabCount > 1) {
+      searchParams.set('min_collab_count', String(params.minCollabCount));
+    }
 
     const url = `/api/v1/network/expand?${searchParams}`;
     const es = new EventSource(url);

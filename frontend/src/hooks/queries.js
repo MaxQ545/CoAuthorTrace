@@ -148,6 +148,7 @@ export function useInstitutionRanking(institutionId) {
     queryFn: () => api.getInstitutionRanking(institutionId, null, 100, 0, null, null, true),
     enabled: !!institutionId,
     staleTime: STALE_TIME_DEFAULT,
+    placeholderData: (previousData) => previousData,
   });
 }
 

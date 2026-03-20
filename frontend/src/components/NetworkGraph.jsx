@@ -88,11 +88,16 @@ const NetworkGraph = forwardRef(function NetworkGraph(
   const [loading, setLoading] = useState(true);
   const initRef = useRef(false);
   const onNodeClickRef = useRef(onNodeClick);
+  const centerNodeIdRef = useRef(centerNodeId);
 
-  // Keep the ref up-to-date with latest callback
+  // Keep refs up-to-date without causing re-renders
   useEffect(() => {
     onNodeClickRef.current = onNodeClick;
   }, [onNodeClick]);
+
+  useEffect(() => {
+    centerNodeIdRef.current = centerNodeId;
+  }, [centerNodeId]);
 
   // Initialize vis-network (once for progressive mode, or on data change for legacy)
   const initNetwork = useCallback(async (initialNodes = [], initialEdges = []) => {
@@ -114,6 +119,7 @@ const NetworkGraph = forwardRef(function NetworkGraph(
       visEdgesRef.current = new DataSet();
     } else {
       // Legacy mode: populate DataSets from props
+      const currentCenterNodeId = centerNodeIdRef.current;
       visNodesRef.current = new DataSet(
         initialNodes.map((node) => ({
           id: node.id,
@@ -125,10 +131,10 @@ const NetworkGraph = forwardRef(function NetworkGraph(
               引用: ${parseInt(node.citations, 10) || 0}
             </div>`
           ),
-          color: node.id === centerNodeId ? CENTER_COLOR : DEFAULT_NODE_COLOR,
-          size: node.id === centerNodeId ? 35 : Math.max(15, Math.min(30, 15 + (node.collabCount || 0) * 0.5)),
+          color: node.id === currentCenterNodeId ? CENTER_COLOR : DEFAULT_NODE_COLOR,
+          size: node.id === currentCenterNodeId ? 35 : Math.max(15, Math.min(30, 15 + (node.collabCount || 0) * 0.5)),
           font: {
-            size: node.id === centerNodeId ? 16 : 14,
+            size: node.id === currentCenterNodeId ? 16 : 14,
             face: 'Inter, system-ui, sans-serif',
             color: '#1F2937',
             strokeWidth: 4,
@@ -239,7 +245,7 @@ const NetworkGraph = forwardRef(function NetworkGraph(
     }
 
     initRef.current = true;
-  }, [progressive, centerNodeId]);
+  }, [progressive]);
 
   // Legacy mode: reinit on data change
   useEffect(() => {

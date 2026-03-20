@@ -45,5 +45,14 @@ export default defineConfig({
     commonjsOptions: {
       include: [/node_modules/],
     },
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'vendor-react': ['react', 'react-dom', 'react-router-dom'],
+          'vendor-tanstack': ['@tanstack/react-query', '@tanstack/react-table'],
+          'vendor-ui': ['framer-motion', 'sonner', 'lucide-react'],
+        },
+      },
+    },
   },
 })
