@@ -24,8 +24,8 @@ const SearchBox = memo(function SearchBox({ onSearch, placeholder = '搜索作�
   useEffect(() => {
     const trimmedQuery = query.trim();
 
-    // 输入长度 < 1 时隐藏建议
-    if (trimmedQuery.length < 1) {
+    // 输入长度 < 2 时隐藏建议
+    if (trimmedQuery.length < 2) {
       setSuggestions([]);
       setShowSuggestions(false);
       setIsLoadingSuggestions(false);

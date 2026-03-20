@@ -140,7 +140,7 @@ function AuthorSearchPage() {
                             key={field.id}
                             className="px-2 py-1 bg-primary/10 text-primary text-xs rounded-full"
                           >
-                            {field.display_name}
+                            {field.name}
                           </span>
                         ))}
                       </div>

@@ -61,7 +61,7 @@ export function useAuthorSearch(query, limit = 50, offset = 0, includeAllIds = t
     queryKey: queryKeys.authorSearch(query, limit, offset, includeAllIds, fuzzy),
     queryFn: () => api.searchAuthors(query, limit, offset, includeAllIds, fuzzy),
     enabled: !!query,
-    staleTime: STALE_TIME_DEFAULT,
+    staleTime: STALE_TIME_ADMIN,
   });
 }
 
@@ -145,7 +145,7 @@ export function useInstitutions(query = null) {
 export function useInstitutionRanking(institutionId) {
   return useQuery({
     queryKey: queryKeys.institutionRanking(institutionId),
-    queryFn: () => api.getInstitutionRanking(institutionId, null, 100, 0, null, null, false),
+    queryFn: () => api.getInstitutionRanking(institutionId, null, 100, 0, null, null, true),
     enabled: !!institutionId,
     staleTime: STALE_TIME_DEFAULT,
   });
