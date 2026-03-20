@@ -15,5 +15,8 @@ export function usePageTracking() {
     const authorId = match ? match[1] : null
 
     api.trackVisit(pathname, authorId)
+
+    // Focus main content for screen readers on route change
+    document.getElementById('main-content')?.focus({ preventScroll: true });
   }, [pathname])
 }

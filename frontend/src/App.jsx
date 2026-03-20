@@ -1,6 +1,7 @@
 import { lazy, Suspense } from 'react'
-import { Routes, Route, Link } from 'react-router-dom'
+import { Routes, Route, Link, useLocation } from 'react-router-dom'
 import Layout from './components/Layout'
+import ErrorBoundary from './components/ErrorBoundary'
 import { usePageTracking } from './hooks/usePageTracking'
 
 const HomePage = lazy(() => import('./pages/HomePage'))
@@ -13,7 +14,7 @@ const AdminDashboardPage = lazy(() => import('./pages/AdminDashboardPage'))
 
 function PageLoader() {
   return (
-    <div className="flex items-center justify-center min-h-[60vh]">
+    <div className="flex items-center justify-center min-h-[60vh]" aria-live="polite">
       <div className="flex flex-col items-center gap-3">
         <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
         <span className="text-sm text-muted-foreground">Loading...</span>
@@ -24,9 +25,11 @@ function PageLoader() {
 
 function App() {
   usePageTracking()
+  const location = useLocation()
 
   return (
     <Layout>
+      <ErrorBoundary resetKey={location.pathname}>
       <Suspense fallback={<PageLoader />}>
         <Routes>
           <Route path="/" element={<HomePage />} />
@@ -46,6 +49,7 @@ function App() {
           } />
         </Routes>
       </Suspense>
+      </ErrorBoundary>
     </Layout>
   )
 }
