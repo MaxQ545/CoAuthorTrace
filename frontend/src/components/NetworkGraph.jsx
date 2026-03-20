@@ -12,9 +12,7 @@ const DEFAULT_NODE_COLOR = { background: '#DBEAFE', border: '#3B82F6' };
 const CENTER_COLOR = { background: '#2563EB', border: '#1E40AF' };
 
 function createTooltip(html) {
-  const el = document.createElement('div');
-  el.innerHTML = html;
-  return el;
+  return html;
 }
 
 function formatProgressiveNode(nodeData, seedIds = []) {
@@ -213,10 +211,23 @@ const NetworkGraph = forwardRef(function NetworkGraph(
       }
     });
 
-    if (!progressive) {
-      networkRef.current.on('stabilizationIterationsDone', () => {
+    // Disable physics after stabilization to save CPU
+    networkRef.current.on('stabilizationIterationsDone', () => {
+      networkRef.current.setOptions({ physics: { enabled: false } });
+      if (!progressive) {
         setLoading(false);
-      });
+      }
+    });
+
+    // Re-enable physics while dragging so nodes settle naturally
+    networkRef.current.on('dragStart', () => {
+      networkRef.current.setOptions({ physics: { enabled: true } });
+    });
+    networkRef.current.on('dragEnd', () => {
+      setTimeout(() => networkRef.current.setOptions({ physics: { enabled: false } }), 1000);
+    });
+
+    if (!progressive) {
       setTimeout(() => setLoading(false), 2000);
     } else {
       setLoading(false);
