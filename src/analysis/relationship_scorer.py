@@ -2,7 +2,7 @@
 Relationship scorer combining GraphSAGE embeddings and weighted metrics.
 """
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 import numpy as np
@@ -117,7 +117,7 @@ class RelationshipScorer:
                 self.model,
                 self.model_path,
                 metadata={
-                    "trained_at": datetime.utcnow().isoformat(),
+                    "trained_at": datetime.now(timezone.utc).isoformat(),
                     "num_nodes": self.graph_data.num_nodes,
                     "num_edges": self.graph_data.edge_index.size(1) // 2,
                 }
@@ -647,7 +647,7 @@ def run_analysis(
             return train_stats
 
         # Compute all scores
-        model_version = f"v{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}"
+        model_version = f"v{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}"
         num_scores = scorer.compute_all_scores(model_version=model_version)
 
         session.commit()

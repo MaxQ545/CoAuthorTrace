@@ -4,7 +4,7 @@ Multi-institution concurrent crawler with persistent state tracking.
 import asyncio
 import logging
 import threading
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Dict, Optional
 
 from sqlalchemy.orm import Session
@@ -165,7 +165,7 @@ class MultiInstitutionCrawler:
         if not ev.is_set() and not self._check_stop(institution_id):
             # Pause requested — update state and block
             state.status = "paused"
-            state.paused_at = datetime.utcnow()
+            state.paused_at = datetime.now(timezone.utc)
             session.commit()
             logger.info(f"[{institution_id}] Crawl paused")
             # Block until resumed (event.set()) — check every 1s so we can detect stop
@@ -240,7 +240,7 @@ class MultiInstitutionCrawler:
         if error_message is not None:
             state.error_message = error_message
         if completed:
-            state.last_crawl_completed = datetime.utcnow()
+            state.last_crawl_completed = datetime.now(timezone.utc)
             # Clear cursor on completion (will start fresh next time with incremental date)
             state.last_cursor = None
             state.cursor_valid_until = None
@@ -331,7 +331,7 @@ class MultiInstitutionCrawler:
         try:
             state = self._get_or_create_state(session, institution_id)
             stats["institution_name"] = state.institution_name or "Unknown"
-            state.started_at = datetime.utcnow()
+            state.started_at = datetime.now(timezone.utc)
             state.progress_current = 0
             state.progress_total = None
             self._update_state(session, state, status="running", error_message=None)
@@ -346,7 +346,7 @@ class MultiInstitutionCrawler:
                 logger.info(f"[{institution_id}] Incremental crawl from {from_date}")
 
             # Check if we can resume from a saved cursor
-            now = datetime.utcnow()
+            now = datetime.now(timezone.utc)
             if state.last_cursor and state.cursor_valid_until and state.cursor_valid_until > now:
                 cursor = state.last_cursor
                 logger.info(f"[{institution_id}] Resuming from saved cursor")
@@ -548,7 +548,7 @@ class MultiInstitutionCrawler:
             if self._check_stop(institution_id):
                 # Save cursor for resumability
                 if current_cursor and current_cursor != "*":
-                    cursor_valid = datetime.utcnow() + timedelta(hours=self.cursor_ttl_hours)
+                    cursor_valid = datetime.now(timezone.utc) + timedelta(hours=self.cursor_ttl_hours)
                     self._update_state(
                         session, state,
                         cursor=current_cursor,
@@ -566,7 +566,7 @@ class MultiInstitutionCrawler:
             # Re-check stop after potential pause (stop may have arrived during pause)
             if self._check_stop(institution_id):
                 if current_cursor and current_cursor != "*":
-                    cursor_valid = datetime.utcnow() + timedelta(hours=self.cursor_ttl_hours)
+                    cursor_valid = datetime.now(timezone.utc) + timedelta(hours=self.cursor_ttl_hours)
                     self._update_state(
                         session, state,
                         cursor=current_cursor,
@@ -591,7 +591,7 @@ class MultiInstitutionCrawler:
 
             # Save cursor every 5 batches (1000 works) for crash recovery
             if current_cursor and batch_count % 5 == 0:
-                cursor_valid = datetime.utcnow() + timedelta(hours=self.cursor_ttl_hours)
+                cursor_valid = datetime.now(timezone.utc) + timedelta(hours=self.cursor_ttl_hours)
                 self._update_state(
                     session, state,
                     cursor=current_cursor,
@@ -620,7 +620,7 @@ def get_all_institution_states() -> list[dict]:
                 "last_publication_date": s.last_publication_date,
                 "last_crawl_completed": s.last_crawl_completed.isoformat() if s.last_crawl_completed else None,
                 "has_pending_cursor": bool(
-                    s.last_cursor and s.cursor_valid_until and s.cursor_valid_until > datetime.utcnow()
+                    s.last_cursor and s.cursor_valid_until and s.cursor_valid_until > datetime.now(timezone.utc)
                 ),
                 "error_message": s.error_message,
                 "queue_position": s.queue_position,

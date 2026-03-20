@@ -7,6 +7,7 @@ from typing import Optional
 
 from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from config.settings import settings
 from src.database.models import init_database, get_session
@@ -83,7 +84,19 @@ def create_app() -> FastAPI:
 
     @app.get("/health")
     async def health():
-        """Health check endpoint."""
+        """Health check endpoint with DB connectivity verification."""
+        try:
+            from sqlalchemy import text
+            session = get_session()
+            try:
+                session.execute(text("SELECT 1"))
+            finally:
+                session.close()
+        except Exception as e:
+            return JSONResponse(
+                status_code=503,
+                content={"status": "unhealthy", "detail": str(e)},
+            )
         return {"status": "healthy"}
 
     return app

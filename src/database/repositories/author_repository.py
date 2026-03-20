@@ -21,8 +21,21 @@ def _escape_like(value: str) -> str:
     """Escape LIKE special characters (%, _, \\) to prevent wildcard injection."""
     return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
-# Simple in-memory cache for search count (cleared on restart)
+# Simple in-memory cache for search count (cleared on restart).
+# Bounded: evicts all entries when exceeding 500 to prevent unbounded growth.
 _search_count_cache = {}
+_SEARCH_COUNT_CACHE_MAX = 500
+
+
+def _search_count_cache_get(key):
+    return _search_count_cache.get(key)
+
+
+def _search_count_cache_set(key, value):
+    global _search_count_cache
+    if len(_search_count_cache) > _SEARCH_COUNT_CACHE_MAX:
+        _search_count_cache = {}
+    _search_count_cache[key] = value
 
 class AuthorRepository:
     """Repository for Author CRUD operations."""
