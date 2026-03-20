@@ -3,6 +3,7 @@ Redis cache utilities for API.
 """
 import json
 import logging
+import time
 from typing import Optional, Any
 
 from config.settings import settings
@@ -12,6 +13,8 @@ logger = logging.getLogger(__name__)
 _redis_client = None
 _cache_wrapper = None
 _redis_checked = False
+_last_check_time: float = 0.0
+_RETRY_INTERVAL: float = 300.0  # Re-attempt connection every 5 minutes
 
 
 def cache_key(*args) -> str:
@@ -72,7 +75,7 @@ def get_cache() -> Optional[CacheWrapper]:
     Returns None if Redis is disabled or unavailable.
     Caches the result to avoid repeated connection attempts.
     """
-    global _redis_client, _cache_wrapper, _redis_checked
+    global _redis_client, _cache_wrapper, _redis_checked, _last_check_time
 
     if not settings.database.redis_enabled:
         return None
@@ -81,11 +84,14 @@ def get_cache() -> Optional[CacheWrapper]:
     if _cache_wrapper is not None:
         return _cache_wrapper
 
-    # If we already checked and failed, don't retry
+    # If we already checked and failed, retry after _RETRY_INTERVAL seconds
     if _redis_checked:
-        return None
+        if time.monotonic() - _last_check_time < _RETRY_INTERVAL:
+            return None
+        logger.info("Retrying Redis connection after previous failure")
 
     _redis_checked = True
+    _last_check_time = time.monotonic()
 
     try:
         import redis

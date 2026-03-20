@@ -4,6 +4,7 @@ OpenAlex API client with rate limiting and cursor pagination.
 import asyncio
 import json
 import logging
+import time
 from datetime import datetime
 from typing import Optional, AsyncGenerator
 from urllib.parse import urlencode
@@ -27,13 +28,13 @@ class RateLimiter:
         """
         self.rate = rate
         self.tokens = rate
-        self.last_update = asyncio.get_event_loop().time() if asyncio.get_event_loop().is_running() else 0
+        self.last_update = time.monotonic()
         self._lock = asyncio.Lock()
 
     async def acquire(self):
         """Acquire a token, waiting if necessary."""
         async with self._lock:
-            now = asyncio.get_event_loop().time()
+            now = time.monotonic()
             elapsed = now - self.last_update
             self.tokens = min(self.rate, self.tokens + elapsed * self.rate)
             self.last_update = now
