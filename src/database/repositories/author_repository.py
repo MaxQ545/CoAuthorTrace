@@ -1,8 +1,12 @@
 """Repository for Author operations."""
+import json
+import logging
 from functools import lru_cache
 from typing import Optional
 from sqlalchemy.orm import Session
 from sqlalchemy import or_, func, select
+
+logger = logging.getLogger(__name__)
 
 from src.database.models import (
     Author,
@@ -13,9 +17,12 @@ from src.database.models import (
     InstitutionStats,
 )
 
+def _escape_like(value: str) -> str:
+    """Escape LIKE special characters (%, _, \\) to prevent wildcard injection."""
+    return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
 # Simple in-memory cache for search count (cleared on restart)
 _search_count_cache = {}
-
 
 class AuthorRepository:
     """Repository for Author CRUD operations."""
@@ -110,7 +117,7 @@ class AuthorRepository:
         if fuzzy:
             # Fuzzy match (case-insensitive partial match)
             # using ilike for generic SQL case-insensitive matching
-            base_filter = Author.display_name.ilike(f"%{query}%")
+            base_filter = Author.display_name.ilike(f"%{_escape_like(query)}%")
             if canonical_only:
                 base_filter = base_filter & (Author.is_canonical == True)
 
@@ -274,7 +281,6 @@ class AuthorRepository:
         This queries through Authorship and Work tables to dynamically count
         collaborations within the specified time range.
         """
-        import json
 
         # Get all IDs for the author (including aliases)
         author = self.get_by_id(author_id)
@@ -285,8 +291,8 @@ class AuthorRepository:
         if author.alias_ids:
             try:
                 author_ids.extend(json.loads(author.alias_ids))
-            except:
-                pass
+            except (json.JSONDecodeError, ValueError, TypeError) as e:
+                logger.warning("Failed to parse alias_ids: %s", e)
 
         # Subquery: find all work_ids the author participated in (within year range)
         # Using select() construct for proper subquery handling in SQLAlchemy 1.4+
@@ -364,7 +370,6 @@ class AuthorRepository:
 
     def get_merged_works_count(self, author_id: str) -> int:
         """Get total works count for an author including all merged aliases."""
-        import json
 
         author = self.get_by_id(author_id)
         if not author:
@@ -375,8 +380,8 @@ class AuthorRepository:
         if author.alias_ids:
             try:
                 all_ids.extend(json.loads(author.alias_ids))
-            except:
-                pass
+            except (json.JSONDecodeError, ValueError, TypeError) as e:
+                logger.warning("Failed to parse alias_ids: %s", e)
 
         # Count unique works
         count = (
@@ -401,7 +406,7 @@ class AuthorRepository:
 
         if alias:
             # Find the canonical record that has this ID in alias_ids
-            import json
+    
             canonical = (
                 self.session.query(Author)
                 .filter(Author.is_canonical == True)
@@ -418,7 +423,6 @@ class AuthorRepository:
 
         Returns list of dicts with id, orcid, works_count for each ID.
         """
-        import json
 
         author = self.get_by_id(author_id)
         if not author:
@@ -429,8 +433,8 @@ class AuthorRepository:
         if author.alias_ids:
             try:
                 all_ids.extend(json.loads(author.alias_ids))
-            except:
-                pass
+            except (json.JSONDecodeError, ValueError, TypeError) as e:
+                logger.warning("Failed to parse alias_ids: %s", e)
 
         # Get info for each ID
         results = []
@@ -468,7 +472,6 @@ class AuthorRepository:
         string is counted as one entry (matches the old behaviour when the
         majority of rows have one affiliation).
         """
-        import json
 
         author = self.get_by_id(author_id)
         if not author:
@@ -478,8 +481,8 @@ class AuthorRepository:
         if author.alias_ids:
             try:
                 all_ids.extend(json.loads(author.alias_ids))
-            except:
-                pass
+            except (json.JSONDecodeError, ValueError, TypeError) as e:
+                logger.warning("Failed to parse alias_ids: %s", e)
 
         # Split semicolon-separated affiliations and count each individually
         split_sq = (
@@ -787,14 +790,13 @@ class AuthorRepository:
     ) -> tuple[list[tuple], int]:
         """Get top authors by works count within a specific affiliation name."""
         from collections import defaultdict
-        import json
 
         query = self.session.query(
             Authorship.author_id,
             func.count(func.distinct(Authorship.work_id)).label("works_count"),
         ).filter(
             Authorship.raw_affiliation.isnot(None),
-            Authorship.raw_affiliation.ilike(f"%{institution_name}%"),
+            Authorship.raw_affiliation.ilike(f"%{_escape_like(institution_name)}%"),
         )
 
         if from_year is not None or to_year is not None:
@@ -853,7 +855,8 @@ class AuthorRepository:
         for canonical_id, alias_ids_str in canonical_rows:
             try:
                 aliases = json.loads(alias_ids_str)
-            except Exception:
+            except (json.JSONDecodeError, ValueError, TypeError) as e:
+                logger.warning("Failed to parse alias_ids: %s", e)
                 aliases = []
             for alias in aliases:
                 alias_to_canonical[alias] = canonical_id
@@ -934,7 +937,6 @@ class AuthorRepository:
         to_year: Optional[int] = None
     ) -> int:
         """Get total works count for an author within a year range."""
-        import json
 
         author = self.get_by_id(author_id)
         if not author:
@@ -945,8 +947,8 @@ class AuthorRepository:
         if author.alias_ids:
             try:
                 all_ids.extend(json.loads(author.alias_ids))
-            except:
-                pass
+            except (json.JSONDecodeError, ValueError, TypeError) as e:
+                logger.warning("Failed to parse alias_ids: %s", e)
 
         # Build query with year filter
         query = (
@@ -969,7 +971,6 @@ class AuthorRepository:
         to_year: Optional[int] = None
     ) -> int:
         """Get total cited_by_count for an author's works within a year range."""
-        import json
 
         author = self.get_by_id(author_id)
         if not author:
@@ -980,8 +981,8 @@ class AuthorRepository:
         if author.alias_ids:
             try:
                 all_ids.extend(json.loads(author.alias_ids))
-            except:
-                pass
+            except (json.JSONDecodeError, ValueError, TypeError) as e:
+                logger.warning("Failed to parse alias_ids: %s", e)
 
         # Build query - sum cited_by_count of all distinct works by this author
         query = (
@@ -1009,7 +1010,7 @@ class AuthorRepository:
             stats_query = self.session.query(InstitutionStats)
             if query:
                 stats_query = stats_query.filter(
-                    InstitutionStats.institution_name.ilike(f"%{query}%")
+                    InstitutionStats.institution_name.ilike(f"%{_escape_like(query)}%")
                 )
             total = stats_query.count()
             stats_query = stats_query.order_by(InstitutionStats.author_count.desc())
@@ -1042,7 +1043,7 @@ class AuthorRepository:
 
         if query:
             query_builder = query_builder.filter(
-                Author.last_known_institution_name.ilike(f"%{query}%")
+                Author.last_known_institution_name.ilike(f"%{_escape_like(query)}%")
             )
 
         results = (
@@ -1079,7 +1080,6 @@ class AuthorRepository:
 
         Returns dict mapping author_id -> cited_by_count.
         """
-        import json
 
         if not author_ids:
             return {}
@@ -1099,8 +1099,8 @@ class AuthorRepository:
             if author.alias_ids:
                 try:
                     ids.extend(json.loads(author.alias_ids))
-                except:
-                    pass
+                except (json.JSONDecodeError, ValueError, TypeError) as e:
+                    logger.warning("Failed to parse alias_ids: %s", e)
             canonical_to_all[author.id] = ids
             all_ids_flat.extend(ids)
 
@@ -1140,7 +1140,6 @@ class AuthorRepository:
 
         Returns dict mapping author_id -> list of {id, orcid, works_count}.
         """
-        import json
 
         if not author_ids:
             return {}
@@ -1165,8 +1164,8 @@ class AuthorRepository:
             if a.alias_ids:
                 try:
                     ids.extend(json.loads(a.alias_ids))
-                except:
-                    pass
+                except (json.JSONDecodeError, ValueError, TypeError) as e:
+                    logger.warning("Failed to parse alias_ids: %s", e)
             canonical_to_all[aid] = ids
             all_ids_flat.extend(ids)
 
@@ -1218,7 +1217,6 @@ class AuthorRepository:
 
         Returns dict mapping author_id -> distinct works count (across aliases).
         """
-        import json
 
         if not author_ids:
             return {}
@@ -1238,8 +1236,8 @@ class AuthorRepository:
             if author.alias_ids:
                 try:
                     ids.extend(json.loads(author.alias_ids))
-                except:
-                    pass
+                except (json.JSONDecodeError, ValueError, TypeError) as e:
+                    logger.warning("Failed to parse alias_ids: %s", e)
             canonical_to_all[author.id] = ids
             all_ids_flat.extend(ids)
 

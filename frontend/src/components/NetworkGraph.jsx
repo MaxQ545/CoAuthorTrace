@@ -11,6 +11,16 @@ const DEPTH_COLORS = [
 const DEFAULT_NODE_COLOR = { background: '#DBEAFE', border: '#3B82F6' };
 const CENTER_COLOR = { background: '#2563EB', border: '#1E40AF' };
 
+function escapeHtml(str) {
+  if (str == null) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
 function createTooltip(html) {
   const el = document.createElement('div');
   el.innerHTML = html;
@@ -28,10 +38,10 @@ function formatProgressiveNode(nodeData, seedIds = []) {
     label: name,
     title: createTooltip(
       `<div style="padding:4px; font-family: sans-serif;">
-        <strong>${name}</strong><br/>
-        ${nodeData.institution ? `机构: ${nodeData.institution}<br/>` : ''}
-        论文: ${nodeData.works_count || 0}<br/>
-        引用: ${nodeData.cited_by_count || 0}
+        <strong>${escapeHtml(name)}</strong><br/>
+        ${nodeData.institution ? `机构: ${escapeHtml(nodeData.institution)}<br/>` : ''}
+        论文: ${parseInt(nodeData.works_count, 10) || 0}<br/>
+        引用: ${parseInt(nodeData.cited_by_count, 10) || 0}
       </div>`
     ),
     color,
@@ -104,9 +114,9 @@ const NetworkGraph = forwardRef(function NetworkGraph(
           label: node.label,
           title: createTooltip(
             `<div style="padding:4px; font-family: sans-serif;">
-              <strong>${node.label}</strong><br/>
-              论文: ${node.papers || 0}<br/>
-              引用: ${node.citations || 0}
+              <strong>${escapeHtml(node.label)}</strong><br/>
+              论文: ${parseInt(node.papers, 10) || 0}<br/>
+              引用: ${parseInt(node.citations, 10) || 0}
             </div>`
           ),
           color: node.id === centerNodeId ? CENTER_COLOR : DEFAULT_NODE_COLOR,
