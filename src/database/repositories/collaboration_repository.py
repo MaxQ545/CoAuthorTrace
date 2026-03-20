@@ -1,5 +1,5 @@
 """Repository for Collaboration operations."""
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 from sqlalchemy.orm import Session
 from sqlalchemy import func, or_, and_
@@ -224,7 +224,7 @@ class CollaborationRepository:
                 score.combined_score = combined_score
             if model_version is not None:
                 score.model_version = model_version
-            score.computed_at = datetime.utcnow()
+            score.computed_at = datetime.now(timezone.utc)
         else:
             score = RelationshipScore(
                 author_id_1=author_id_1,
@@ -311,7 +311,7 @@ class CollaborationRepository:
                 try:
                     alias_list = json.loads(author.alias_ids)
                     ids.extend(alias_list)
-                except:
+                except Exception:
                     pass
             return ids
 

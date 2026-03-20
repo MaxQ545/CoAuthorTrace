@@ -4,7 +4,7 @@ Research fields computation from paper concepts.
 import json
 import logging
 from collections import defaultdict
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 from sqlalchemy.orm import Session
@@ -116,7 +116,7 @@ class ResearchFieldsCalculator:
         # Update cache if requested
         if update_cache and top_results:
             author.research_fields = json.dumps(top_results)
-            author.research_fields_updated_at = datetime.utcnow()
+            author.research_fields_updated_at = datetime.now(timezone.utc)
 
         return top_results
 
@@ -143,7 +143,7 @@ class ResearchFieldsCalculator:
 
         # Check cache freshness
         if author.research_fields and author.research_fields_updated_at:
-            age = datetime.utcnow() - author.research_fields_updated_at
+            age = datetime.now(timezone.utc) - author.research_fields_updated_at
             if age.days < max_age_days:
                 try:
                     cached = json.loads(author.research_fields)

@@ -4,7 +4,7 @@ Incremental crawler for OpenAlex data with state persistence.
 import asyncio
 import hashlib
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from sqlalchemy.orm import Session
@@ -104,7 +104,7 @@ class IncrementalCrawler:
             state.status = status
         if error_message is not None:
             state.error_message = error_message
-        state.last_crawl_date = datetime.utcnow()
+        state.last_crawl_date = datetime.now(timezone.utc)
         session.commit()
 
     async def crawl(

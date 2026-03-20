@@ -49,10 +49,10 @@ def _get_geoip_reader():
     return _geoip_reader
 
 
-def _resolve_region(ip: str) -> Optional[str]:
+def _resolve_region_local(ip: str) -> Optional[str]:
+    """Try local GeoLite2 database only (synchronous, no network)."""
     if not ip or ip in ("127.0.0.1", "::1", "unknown"):
         return None
-    # Try local GeoLite2 first
     reader = _get_geoip_reader()
     if reader is not None:
         try:
@@ -65,18 +65,28 @@ def _resolve_region(ip: str) -> Optional[str]:
                 return ", ".join(parts)
         except Exception:
             pass
+    return None
+
+
+async def _resolve_region(ip: str) -> Optional[str]:
+    if not ip or ip in ("127.0.0.1", "::1", "unknown"):
+        return None
+    # Try local GeoLite2 first (no network, safe to call directly)
+    local_result = _resolve_region_local(ip)
+    if local_result:
+        return local_result
     # Fallback: Baidu IP API (accurate for Chinese IPs, no key required)
     try:
-        r = httpx.get(
-            "https://opendata.baidu.com/api.php",
-            params={"query": ip, "co": "", "resource_id": "6006", "oe": "utf8"},
-            timeout=3,
-        )
-        if r.status_code == 200:
-            data = r.json()
-            items = data.get("data", [])
-            if items and items[0].get("location"):
-                return items[0]["location"]
+        async with httpx.AsyncClient(timeout=3) as client:
+            r = await client.get(
+                "https://opendata.baidu.com/api.php",
+                params={"query": ip, "co": "", "resource_id": "6006", "oe": "utf8"},
+            )
+            if r.status_code == 200:
+                data = r.json()
+                items = data.get("data", [])
+                if items and items[0].get("location"):
+                    return items[0]["location"]
     except Exception:
         pass
     return None
@@ -132,7 +142,7 @@ async def track_visit(body: TrackRequest, request: Request, db: Session = Depend
         ip = request.headers.get("x-forwarded-for", "").split(",")[0].strip()
         if not ip:
             ip = request.client.host if request.client else "unknown"
-        region = _resolve_region(ip)
+        region = await _resolve_region(ip)
         visit = PageVisit(
             ip_address=ip,
             region=region,
@@ -331,7 +341,7 @@ async def start_crawl(
     institution_ids.sort(key=sort_key)
 
     # Set queued status for waiting institutions
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     for idx, inst_id in enumerate(institution_ids):
         state = state_map.get(inst_id)
         if state:

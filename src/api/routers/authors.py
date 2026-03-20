@@ -21,6 +21,11 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
+
+def _escape_like(value: str) -> str:
+    """Escape special characters for SQL LIKE/ILIKE patterns."""
+    return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
 @lru_cache()
 def _load_institution_catalog() -> dict:
     """Load institution id -> name mapping from crawl_targets.json."""
@@ -135,7 +140,7 @@ class AuthorResponse(BaseModel):
         if author.alias_ids:
             try:
                 alias_ids = json.loads(author.alias_ids)
-            except:
+            except Exception:
                 pass
 
         return cls(
@@ -449,7 +454,7 @@ async def get_institution_ranking(
             # Fallback: query indexed InstitutionStats only (no heavy live aggregation).
             candidate = (
                 db.query(InstitutionStats)
-                .filter(InstitutionStats.institution_name.ilike(f"%{institution_name}%"))
+                .filter(InstitutionStats.institution_name.ilike(f"%{_escape_like(institution_name)}%"))
                 .order_by(InstitutionStats.author_count.desc())
                 .first()
             )
