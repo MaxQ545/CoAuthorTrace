@@ -124,6 +124,7 @@ const SearchBox = memo(function SearchBox({ onSearch, placeholder = '搜索作�
       <form onSubmit={handleSubmit}>
         <div className="flex">
           <input
+            id="search-input"
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}

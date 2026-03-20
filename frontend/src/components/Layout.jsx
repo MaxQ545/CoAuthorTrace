@@ -1,12 +1,32 @@
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import TimeRangeSelector from './TimeRangeSelector';
-import { LayoutDashboard, Network, Trophy, BookOpen, Sun, Moon, ArrowRightLeft } from 'lucide-react';
+import { LayoutDashboard, Network, Trophy, BookOpen, Sun, Moon, ArrowRightLeft, Search } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '../lib/utils';
 import { useState, useEffect } from 'react';
 
 function Layout({ children }) {
   const location = useLocation();
+  const navigate = useNavigate();
+
+  // Cmd+K / Ctrl+K global shortcut to focus search
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault();
+        if (location.pathname !== '/authors/search') {
+          navigate('/authors/search');
+        }
+        // Use setTimeout to allow navigation/render to complete before focusing
+        setTimeout(() => {
+          document.getElementById('search-input')?.focus();
+        }, 100);
+      }
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [navigate, location.pathname]);
+
   const [isDark, setIsDark] = useState(() => {
     // Check localStorage or system preference on initial load
     if (typeof window !== 'undefined') {
@@ -101,6 +121,32 @@ function Layout({ children }) {
                  </Link>
                );
             })}
+
+            {/* Search Shortcut Link */}
+            <Link
+              to="/authors/search"
+              className={cn(
+                "hidden md:flex items-center space-x-1.5 px-3 py-1.5 rounded-md text-sm transition-all duration-200 border border-border",
+                location.pathname === '/authors/search'
+                  ? "text-primary bg-primary/10"
+                  : "text-muted-foreground hover:text-foreground hover:bg-muted"
+              )}
+            >
+              <Search size={14} />
+              <span>搜索</span>
+              <kbd className="text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded border border-border ml-1">⌘K</kbd>
+            </Link>
+            <Link
+              to="/authors/search"
+              className={cn(
+                "p-2 rounded-md text-sm font-medium transition-all duration-200 md:hidden",
+                location.pathname === '/authors/search'
+                  ? "text-primary bg-primary/10"
+                  : "text-muted-foreground hover:text-foreground hover:bg-muted"
+              )}
+            >
+              <Search size={20} />
+            </Link>
 
             {/* Theme Toggle Button */}
             <button
