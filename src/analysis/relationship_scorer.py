@@ -216,10 +216,11 @@ class RelationshipScorer:
         if graphsage_sim is None and weighted is None:
             return None
 
-        # Normalize weighted score (log scale)
+        # Normalize weighted score using sigmoid for smooth 0-1 mapping
         if weighted is not None and weighted > 0:
-            weighted_normalized = np.log1p(weighted) / 10  # Normalize to ~0-1 range
-            weighted_normalized = min(weighted_normalized, 1.0)
+            # sigmoid(log(w)) maps any positive weight to (0.5, 1.0) range,
+            # with diminishing returns for very large weights
+            weighted_normalized = float(1.0 / (1.0 + np.exp(-np.log1p(weighted))))
         else:
             weighted_normalized = 0.0
 
@@ -628,7 +629,7 @@ def run_analysis(
     min_collaborations: int = 1,
 ) -> dict:
     """
-    Run full analysis pipeline.
+    Run full analysis pipeline with error recovery.
 
     Args:
         model_path: Path to save/load model
@@ -637,24 +638,37 @@ def run_analysis(
     Returns:
         Analysis statistics
     """
-    scorer = RelationshipScorer(model_path=model_path)
+    session = get_session()
+    scorer = RelationshipScorer(session=session, model_path=model_path)
 
-    # Train model
-    train_stats = scorer.train_model(min_collaborations=min_collaborations)
+    try:
+        # Train model
+        train_stats = scorer.train_model(min_collaborations=min_collaborations)
 
-    if train_stats["status"] != "completed":
-        return train_stats
+        if train_stats["status"] != "completed":
+            return train_stats
 
-    # Compute all scores
-    model_version = f"v{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}"
-    num_scores = scorer.compute_all_scores(model_version=model_version)
+        # Compute all scores
+        model_version = f"v{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}"
+        num_scores = scorer.compute_all_scores(model_version=model_version)
 
-    return {
-        "status": "completed",
-        "train_stats": train_stats,
-        "num_scores": num_scores,
-        "model_version": model_version,
-    }
+        session.commit()
+
+        return {
+            "status": "completed",
+            "train_stats": train_stats,
+            "num_scores": num_scores,
+            "model_version": model_version,
+        }
+    except Exception as e:
+        logger.error(f"Analysis pipeline failed: {e}", exc_info=True)
+        session.rollback()
+        return {
+            "status": "failed",
+            "error": str(e),
+        }
+    finally:
+        session.close()
 
 
 if __name__ == "__main__":

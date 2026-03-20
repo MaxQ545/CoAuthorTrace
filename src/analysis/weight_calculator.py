@@ -194,7 +194,7 @@ class WeightCalculator:
                 .join(Authorship, Work.id == Authorship.work_id)
                 .filter(Authorship.author_id.in_([collab.author_id_1, collab.author_id_2]))
                 .group_by(Work.id)
-                .having(func.count() == 2)
+                .having(func.count(Authorship.id) == 2)
                 .all()
             )
 

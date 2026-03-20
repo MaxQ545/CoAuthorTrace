@@ -30,6 +30,13 @@ class GraphBuilder:
         self.session = session or get_session()
         self._author_id_to_idx: dict[str, int] = {}
         self._idx_to_author_id: dict[int, str] = {}
+        self._cached_graph: Optional[Data] = None
+        self._cache_params: Optional[tuple] = None
+
+    def invalidate_cache(self):
+        """Invalidate the cached graph, forcing a rebuild on next access."""
+        self._cached_graph = None
+        self._cache_params = None
 
     def build_graph(
         self,
@@ -39,6 +46,9 @@ class GraphBuilder:
         """
         Build PyTorch Geometric graph from database.
 
+        Uses instance-level caching to avoid rebuilding when called with the
+        same parameters. Call invalidate_cache() when underlying data changes.
+
         Args:
             min_collaborations: Minimum collaboration count for edge inclusion
             min_weight: Minimum weight for edge inclusion
@@ -46,6 +56,11 @@ class GraphBuilder:
         Returns:
             PyTorch Geometric Data object
         """
+        cache_key = (min_collaborations, min_weight)
+        if self._cached_graph is not None and self._cache_params == cache_key:
+            logger.debug("Returning cached graph")
+            return self._cached_graph
+
         logger.info("Building collaboration graph...")
 
         # Get all authors with at least one collaboration
@@ -74,6 +89,10 @@ class GraphBuilder:
         # Store mappings as data attributes
         data.author_id_to_idx = self._author_id_to_idx
         data.idx_to_author_id = self._idx_to_author_id
+
+        # Cache the built graph
+        self._cached_graph = data
+        self._cache_params = (min_collaborations, min_weight)
 
         return data
 
