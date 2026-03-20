@@ -316,7 +316,7 @@ class MultiInstitutionCrawler:
         """
         stats = {
             "institution_id": institution_id,
-            "institution_name": TARGET_INSTITUTIONS.get(institution_id, "Unknown"),
+            "institution_name": "Unknown",
             "works_processed": 0,
             "works_new": 0,
             "authors_new": 0,
@@ -330,6 +330,7 @@ class MultiInstitutionCrawler:
 
         try:
             state = self._get_or_create_state(session, institution_id)
+            stats["institution_name"] = state.institution_name or "Unknown"
             state.started_at = datetime.utcnow()
             state.progress_current = 0
             state.progress_total = None
@@ -613,7 +614,7 @@ def get_all_institution_states() -> list[dict]:
         return [
             {
                 "institution_id": s.institution_id,
-                "institution_name": s.institution_name or TARGET_INSTITUTIONS.get(s.institution_id, "Unknown"),
+                "institution_name": s.institution_name or "Unknown",
                 "status": s.status,
                 "total_works_crawled": s.total_works_crawled,
                 "last_publication_date": s.last_publication_date,

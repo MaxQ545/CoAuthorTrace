@@ -55,6 +55,7 @@ class RelationshipScorer:
         self.embeddings: Optional[torch.Tensor] = None
         self.graph_data = None
         self._nx_graph: Optional[nx.Graph] = None
+        self._centrality_cache = {}
 
     def train_model(
         self,
@@ -249,9 +250,10 @@ class RelationshipScorer:
         """
         logger.info("Computing relationship scores...")
 
-        # Get all collaborations
-        collaborations = self.session.query(Collaboration).all()
-        logger.info(f"Processing {len(collaborations)} collaborations")
+        # Get all collaborations using chunked iteration to avoid OOM
+        total = self.session.query(func.count(Collaboration.author_id_1)).scalar() or 0
+        collaborations = self.session.query(Collaboration).yield_per(1000)
+        logger.info(f"Processing {total} collaborations")
 
         collab_repo = CollaborationRepository(self.session)
         count = 0
@@ -279,7 +281,7 @@ class RelationshipScorer:
 
             if (i + 1) % batch_size == 0:
                 self.session.commit()
-                logger.info(f"Processed {i + 1}/{len(collaborations)} scores")
+                logger.info(f"Processed {i + 1}/{total} scores")
 
         self.session.commit()
         logger.info(f"Computed {count} relationship scores")
@@ -334,10 +336,6 @@ class RelationshipScorer:
 
         return [(aid, name, score) for aid, name, score in results]
 
-    # NetworkX centrality metrics
-    # Cache for precomputed metrics (populated by run_analysis)
-    _centrality_cache = {}
-
     def _build_nx_graph(self, max_nodes: int = 50000) -> nx.Graph:
         """Build NetworkX graph from collaborations."""
         if self._nx_graph is not None:
@@ -345,8 +343,8 @@ class RelationshipScorer:
 
         G = nx.Graph()
 
-        # Add nodes (with limit to prevent OOM)
-        authors = self.session.query(Author).limit(max_nodes).all()
+        # Add nodes (with limit to prevent OOM), ordered by works_count so most prolific authors are included
+        authors = self.session.query(Author).order_by(Author.works_count.desc().nullslast()).limit(max_nodes).all()
         author_ids = set()
         for author in authors:
             G.add_node(author.id, name=author.display_name)
