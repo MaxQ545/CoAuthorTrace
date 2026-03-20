@@ -1,10 +1,11 @@
-import { useState, useEffect } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useAuthor, useAuthorCollaborators, useNetworkMetrics } from '../hooks/queries';
 import AuthorCard from '../components/AuthorCard';
 import CoAuthoredPapersModal from '../components/CoAuthoredPapersModal';
 import ResearchFieldsBadges from '../components/ResearchFieldsBadges';
 import { useTimeFilter } from '../contexts/TimeFilterContext';
+import { exportToCSV, exportToJSON } from '../utils/export';
 import {
   Building2,
   MapPin,
@@ -17,7 +18,8 @@ import {
   Activity,
   ChevronRight,
   Loader2,
-  AlertTriangle
+  AlertTriangle,
+  Download
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { cn } from '../lib/utils';
@@ -41,6 +43,57 @@ function AuthorPage() {
     }
     return () => { document.title = '论文合作者追踪系统'; };
   }, [author?.display_name]);
+
+  // Export dropdown state
+  const [exportOpen, setExportOpen] = useState(false);
+  const exportRef = useRef(null);
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    const handleClick = (e) => {
+      if (exportRef.current && !exportRef.current.contains(e.target)) {
+        setExportOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, []);
+
+  const handleExportCollaboratorsCSV = () => {
+    const data = collaborators.map(c => ({
+      name: c.display_name,
+      institution: c.last_known_institution_name || c.primary_institution_name || '',
+      works_count: c.works_count ?? 0,
+      cited_by_count: c.cited_by_count ?? 0,
+    }));
+    exportToCSV(data, `collaborators_${author?.display_name || authorId}.csv`);
+    setExportOpen(false);
+  };
+
+  const handleExportCollaboratorsJSON = () => {
+    const data = collaborators.map(c => ({
+      name: c.display_name,
+      institution: c.last_known_institution_name || c.primary_institution_name || '',
+      works_count: c.works_count ?? 0,
+      cited_by_count: c.cited_by_count ?? 0,
+    }));
+    exportToJSON(data, `collaborators_${author?.display_name || authorId}.json`);
+    setExportOpen(false);
+  };
+
+  const handleExportProfileJSON = () => {
+    const profile = {
+      id: author?.id,
+      display_name: author?.display_name,
+      institution: author?.primary_institution_name || author?.last_known_institution_name || '',
+      works_count: author?.works_count || 0,
+      cited_by_count: author?.cited_by_count || 0,
+      collaborators_count: collaborators.length,
+      research_fields: author?.research_fields || [],
+    };
+    exportToJSON(profile, `profile_${author?.display_name || authorId}.json`);
+    setExportOpen(false);
+  };
 
   // Modal state for co-authored papers
   const [modalOpen, setModalOpen] = useState(false);
@@ -125,6 +178,37 @@ function AuthorPage() {
                 >
                   <Network size={14} /> 合作网络
                 </Link>
+                <div className="relative" ref={exportRef}>
+                  <button
+                    onClick={() => setExportOpen(!exportOpen)}
+                    className="inline-flex items-center gap-1.5 px-3 py-1 bg-secondary text-secondary-foreground text-sm font-medium rounded-full hover:bg-secondary/80 transition-colors"
+                  >
+                    <Download size={14} /> 导出数据
+                  </button>
+                  {exportOpen && (
+                    <div className="absolute top-full mt-1 right-0 z-50 bg-card border border-border rounded-lg shadow-lg py-1 min-w-[180px]">
+                      <button
+                        onClick={handleExportCollaboratorsCSV}
+                        className="w-full text-left px-4 py-2 text-sm hover:bg-secondary/50 transition-colors"
+                      >
+                        导出合作者 (CSV)
+                      </button>
+                      <button
+                        onClick={handleExportCollaboratorsJSON}
+                        className="w-full text-left px-4 py-2 text-sm hover:bg-secondary/50 transition-colors"
+                      >
+                        导出合作者 (JSON)
+                      </button>
+                      <div className="border-t border-border my-1" />
+                      <button
+                        onClick={handleExportProfileJSON}
+                        className="w-full text-left px-4 py-2 text-sm hover:bg-secondary/50 transition-colors"
+                      >
+                        导出个人资料 (JSON)
+                      </button>
+                    </div>
+                  )}
+                </div>
               </div>
 
               <div className="flex items-center gap-2 text-muted-foreground">

@@ -2,7 +2,8 @@ import { useState, useEffect } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useInstitutions, useInstitutionRanking } from '../hooks/queries';
 import ResearchFieldsBadges from '../components/ResearchFieldsBadges';
-import { Building2, ChevronRight, GraduationCap, FileText, Quote, Loader2, AlertCircle, ExternalLink } from 'lucide-react';
+import { Building2, ChevronRight, GraduationCap, FileText, Quote, Loader2, AlertCircle, ExternalLink, Download } from 'lucide-react';
+import { exportToCSV } from '../utils/export';
 import { cn } from '../lib/utils';
 import { motion } from 'framer-motion';
 
@@ -143,6 +144,20 @@ function RankingPage() {
                       </p>
                     </div>
                   </div>
+                  <button
+                    onClick={() => {
+                      const data = ranking.authors.map(a => ({
+                        rank: a.rank,
+                        display_name: a.display_name,
+                        works_count: a.works_count,
+                        cited_by_count: a.cited_by_count,
+                      }));
+                      exportToCSV(data, `ranking_${ranking.institution_name}.csv`);
+                    }}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-secondary text-secondary-foreground text-sm font-medium rounded-lg hover:bg-secondary/80 transition-colors shrink-0"
+                  >
+                    <Download size={14} /> 导出 CSV
+                  </button>
                 </div>
 
                 <div className="overflow-x-auto">
