@@ -9,7 +9,7 @@ export default defineConfig({
   workers: process.env.CI ? 1 : undefined,
   reporter: 'list',
   use: {
-    baseURL: 'http://localhost:4173',
+    baseURL: 'http://121.196.234.6:3000',
     screenshot: 'only-on-failure',
     trace: 'on-first-retry',
   },
@@ -19,10 +19,4 @@ export default defineConfig({
       use: { ...devices['Desktop Chrome'] },
     },
   ],
-  webServer: {
-    command: 'COAUTHOR_API_URL=http://121.196.234.6:8000 npx vite --port 4173',
-    port: 4173,
-    reuseExistingServer: !process.env.CI,
-    timeout: 30000,
-  },
 });

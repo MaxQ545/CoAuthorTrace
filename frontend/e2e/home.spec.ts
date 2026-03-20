@@ -14,6 +14,14 @@ test.describe('Home Page', () => {
     await expect(nav.getByText('合作网络')).toBeVisible();
   });
 
+  test('should confirm health endpoint returns healthy status', async ({ page }) => {
+    const response = await page.goto('http://121.196.234.6:8000/health');
+    expect(response).not.toBeNull();
+    expect(response!.ok()).toBeTruthy();
+    const body = await response!.json();
+    expect(body.status).toBe('healthy');
+  });
+
   test('should render system stats section or loading state', async ({ page }) => {
     await page.goto('/');
     // The page should show either stats cards, loading placeholders, or error message

@@ -26,6 +26,22 @@ test.describe('Author Search Page', () => {
     await expect(results.or(loading).or(noResults).or(errorMsg)).toBeVisible({ timeout: 20000 });
   });
 
+  test('should not trigger search results with a single character query', async ({ page }) => {
+    await page.goto('/authors/search');
+
+    const searchInput = page.getByPlaceholder('输入作者姓名搜索...');
+    await searchInput.fill('Z');
+    await searchInput.press('Enter');
+
+    // Wait a moment to confirm no results appear
+    await page.waitForTimeout(2000);
+
+    // With a single character, the search should NOT return result cards
+    const resultCards = page.locator('a[href^="/author/"]');
+    const count = await resultCards.count();
+    expect(count).toBe(0);
+  });
+
   test('should navigate to author page when clicking a search result', async ({ page }) => {
     await page.goto('/authors/search?q=Zhang');
 
