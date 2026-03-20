@@ -378,10 +378,13 @@ class MultiInstitutionCrawler:
                 session=session,
             ):
                 try:
-                    work_dict, authors, authorships = parse_work(
+                    parsed = parse_work(
                         work_data,
                         preferred_institution_ids=[institution_id],
                     )
+                    if parsed is None:
+                        continue
+                    work_dict, authors, authorships = parsed
 
                     # Track max publication date for incremental
                     pub_date_str = work_data.get("publication_date")

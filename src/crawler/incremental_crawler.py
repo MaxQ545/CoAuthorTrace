@@ -175,10 +175,13 @@ class IncrementalCrawler:
                 max_results=max_works,
             ):
                 try:
-                    work_dict, authors, authorships = parse_work(
+                    parsed = parse_work(
                         work_data,
                         preferred_institution_ids=self.institution_ids,
                     )
+                    if parsed is None:
+                        continue
+                    work_dict, authors, authorships = parsed
 
                     pending_parsed.append((work_dict, authors, authorships))
                     stats["works_processed"] += 1

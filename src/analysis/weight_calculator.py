@@ -173,7 +173,8 @@ class WeightCalculator:
         """
         Recalculate time-decayed weights for all collaborations.
 
-        This is useful for periodic updates to refresh time decay.
+        Uses a bulk approach: one query loads all relevant authorship+work data,
+        then weights are computed in Python and batch-committed.
 
         Args:
             session: Database session
@@ -182,62 +183,81 @@ class WeightCalculator:
         Returns:
             Number of collaborations updated
         """
+        from sqlalchemy import case
         from src.database.models import Collaboration, Authorship, Work
 
         collaborations = session.query(Collaboration).all()
-        updated = 0
+        if not collaborations:
+            return 0
 
+        # Collect all author IDs involved in collaborations
+        all_author_ids = set()
         for collab in collaborations:
-            # Get all shared works between these authors
-            shared_works = (
-                session.query(Work)
-                .join(Authorship, Work.id == Authorship.work_id)
-                .filter(Authorship.author_id.in_([collab.author_id_1, collab.author_id_2]))
-                .group_by(Work.id)
-                .having(func.count() == 2)
-                .all()
+            all_author_ids.add(collab.author_id_1)
+            all_author_ids.add(collab.author_id_2)
+
+        # Single bulk query: get all authorships for these authors with work info
+        # and per-work author counts via a window function
+        author_count_subq = (
+            session.query(
+                Authorship.work_id,
+                func.count().label("total_authors"),
             )
+            .group_by(Authorship.work_id)
+            .subquery()
+        )
+
+        rows = (
+            session.query(
+                Authorship.author_id,
+                Authorship.work_id,
+                Authorship.author_position,
+                Authorship.is_corresponding,
+                Work.publication_date,
+                author_count_subq.c.total_authors,
+            )
+            .join(Work, Work.id == Authorship.work_id)
+            .join(author_count_subq, author_count_subq.c.work_id == Authorship.work_id)
+            .filter(Authorship.author_id.in_(all_author_ids))
+            .all()
+        )
+
+        # Build lookup: (author_id, work_id) -> (position, is_corresponding, pub_date, total_authors)
+        auth_lookup: dict[tuple[str, str], tuple] = {}
+        # Also build author_id -> set of work_ids for fast intersection
+        author_works: dict[str, set[str]] = {}
+        for author_id, work_id, position, is_corresponding, pub_date, total_authors in rows:
+            auth_lookup[(author_id, work_id)] = (position, is_corresponding, pub_date, total_authors)
+            author_works.setdefault(author_id, set()).add(work_id)
+
+        # Compute weights in Python
+        updated = 0
+        for idx, collab in enumerate(collaborations):
+            works_1 = author_works.get(collab.author_id_1, set())
+            works_2 = author_works.get(collab.author_id_2, set())
+            shared_work_ids = works_1 & works_2
 
             total_weight = 0.0
-            for work in shared_works:
-                # Get authorships for both authors
-                auth1 = (
-                    session.query(Authorship)
-                    .filter(
-                        Authorship.work_id == work.id,
-                        Authorship.author_id == collab.author_id_1
-                    )
-                    .first()
-                )
-                auth2 = (
-                    session.query(Authorship)
-                    .filter(
-                        Authorship.work_id == work.id,
-                        Authorship.author_id == collab.author_id_2
-                    )
-                    .first()
-                )
-
-                if auth1 and auth2:
-                    # Get total authors for this work
-                    total_authors = (
-                        session.query(Authorship)
-                        .filter(Authorship.work_id == work.id)
-                        .count()
-                    )
-
+            for work_id in shared_work_ids:
+                info1 = auth_lookup.get((collab.author_id_1, work_id))
+                info2 = auth_lookup.get((collab.author_id_2, work_id))
+                if info1 and info2:
                     weight = self.calculate_weight(
-                        position_1=auth1.author_position,
-                        position_2=auth2.author_position,
-                        is_corresponding_1=auth1.is_corresponding,
-                        is_corresponding_2=auth2.is_corresponding,
-                        total_authors=total_authors,
-                        publication_date=work.publication_date,
+                        position_1=info1[0],
+                        position_2=info2[0],
+                        is_corresponding_1=info1[1],
+                        is_corresponding_2=info2[1],
+                        total_authors=info1[3],
+                        publication_date=info1[2],
                     )
                     total_weight += weight
 
             collab.total_weight = total_weight
             updated += 1
+
+            # Batch commit every 500
+            if updated % 500 == 0:
+                session.flush()
 
         session.commit()
         return updated
