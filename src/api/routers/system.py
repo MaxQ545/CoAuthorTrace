@@ -5,7 +5,7 @@ import logging
 from datetime import datetime
 from typing import Optional
 
-from fastapi import APIRouter, Depends, BackgroundTasks
+from fastapi import APIRouter, Depends, BackgroundTasks, Response
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from sqlalchemy import func, text
@@ -79,11 +79,14 @@ from src.api.deps import get_db
 
 @router.get("/status", response_model=SystemStatus)
 async def get_system_status(
+    response: Response,
     db: Session = Depends(get_db),
 ):
     """
     Get system status including database statistics and crawl status.
     """
+    response.headers["Cache-Control"] = "public, max-age=60"
+
     cache = get_cache()
     status_cache_key = cache_key("system_status")
     if cache:

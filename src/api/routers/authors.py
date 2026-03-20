@@ -7,6 +7,7 @@ from functools import lru_cache
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import Response as FastAPIResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -353,6 +354,7 @@ async def search_authors(
 
 @router.get("/institutions", response_model=InstitutionsResponse)
 async def list_institutions(
+    response: FastAPIResponse,
     q: Optional[str] = Query(None, description="Institution name keyword"),
     limit: Optional[int] = Query(None, ge=1, le=5000, description="Maximum results"),
     offset: int = Query(0, ge=0, description="Result offset"),
@@ -364,6 +366,8 @@ async def list_institutions(
 
     Returns institutions sorted by number of authors (descending).
     """
+    response.headers["Cache-Control"] = "public, max-age=3600"
+
     repo = AuthorRepository(db)
     if refresh:
         repo.refresh_institution_stats()

@@ -2,12 +2,14 @@
 Admin dashboard API endpoints: login, visitor tracking, analytics, and crawl management.
 """
 import logging
+import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import List, Optional
 
 import httpx
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from sqlalchemy import func, text
 from sqlalchemy.orm import Session
@@ -24,6 +26,35 @@ from src.database.models import (
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+# ---------------------------------------------------------------------------
+# Login rate limiting — in-memory tracker for brute-force protection
+# ---------------------------------------------------------------------------
+_login_attempts: dict[str, list[float]] = {}
+_RATE_LIMIT_WINDOW = 60       # seconds — track failures within this window
+_RATE_LIMIT_MAX_FAILURES = 5  # max allowed failures in the window
+_RATE_LIMIT_COOLDOWN = 300    # seconds — block duration after exceeding limit
+
+
+def _check_rate_limit(ip: str) -> bool:
+    """Return True if the IP is currently blocked. Cleans up stale entries."""
+    now = time.monotonic()
+    attempts = _login_attempts.get(ip)
+    if attempts is None:
+        return False
+    # Remove entries older than the cooldown period
+    cutoff = now - _RATE_LIMIT_COOLDOWN
+    _login_attempts[ip] = [t for t in attempts if t > cutoff]
+    attempts = _login_attempts[ip]
+    if not attempts:
+        del _login_attempts[ip]
+        return False
+    # Check if there are >= max failures within the short window
+    recent = [t for t in attempts if t > now - _RATE_LIMIT_WINDOW]
+    if len(recent) >= _RATE_LIMIT_MAX_FAILURES:
+        return True
+    return False
+
 
 # ---------------------------------------------------------------------------
 # IP geolocation — GeoLite2 local DB with ip-api.com online fallback
@@ -117,10 +148,23 @@ class ReorderRequest(BaseModel):
 # ---------------------------------------------------------------------------
 
 @router.post("/login")
-async def admin_login(body: LoginRequest):
+async def admin_login(body: LoginRequest, request: Request):
     """Authenticate with admin password and receive a JWT."""
+    ip = request.client.host if request.client else "unknown"
+
+    if _check_rate_limit(ip):
+        return JSONResponse(
+            status_code=429,
+            content={"ok": False, "error": "Too many failed login attempts. Try again later."},
+            headers={"Retry-After": str(_RATE_LIMIT_COOLDOWN)},
+        )
+
     if not verify_password(body.password):
+        _login_attempts.setdefault(ip, []).append(time.monotonic())
         return {"ok": False, "error": "Invalid password"}
+
+    # Successful login — clear any tracked failures for this IP
+    _login_attempts.pop(ip, None)
     token = create_access_token()
     return {"ok": True, "token": token}
 
