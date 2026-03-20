@@ -1,8 +1,9 @@
+import { memo } from 'react';
 import { motion } from 'framer-motion';
 import { cn } from '../lib/utils';
 import { BookOpen, Users, Share2, Activity } from 'lucide-react';
 
-function StatsCard({ title, value, icon, color = 'blue', delay = 0 }) {
+const StatsCard = memo(function StatsCard({ title, value, icon, color = 'blue', delay = 0 }) {
   // Map color names to specific Tailwind classes for light/dark modes
   const colorStyles = {
     blue: {
@@ -74,6 +75,6 @@ function StatsCard({ title, value, icon, color = 'blue', delay = 0 }) {
       </div>
     </motion.div>
   );
-}
+});
 
 export default StatsCard;

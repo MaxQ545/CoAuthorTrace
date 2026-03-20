@@ -3,6 +3,13 @@ import { toast } from 'sonner';
 import api from '../api/client';
 
 // ---------------------------------------------------------------------------
+// Stale time constants
+// ---------------------------------------------------------------------------
+const STALE_TIME_DEFAULT = 5 * 60 * 1000;       // 5 min — most queries
+const STALE_TIME_ADMIN = 30 * 1000;              // 30 s  — admin / status
+const STALE_TIME_STATIC = 10 * 60 * 1000;        // 10 min — rarely-changing data
+
+// ---------------------------------------------------------------------------
 // Query key factories
 // ---------------------------------------------------------------------------
 export const queryKeys = {
@@ -34,7 +41,7 @@ export function useSystemStats() {
   return useQuery({
     queryKey: queryKeys.systemStats,
     queryFn: () => api.getSystemStats(),
-    staleTime: 5 * 60 * 1000,
+    staleTime: STALE_TIME_DEFAULT,
     select: (data) => ({
       works_count: data.database.total_works,
       authors_count: data.database.total_authors,
@@ -54,6 +61,7 @@ export function useAuthorSearch(query, limit = 50, offset = 0, includeAllIds = t
     queryKey: queryKeys.authorSearch(query, limit, offset, includeAllIds, fuzzy),
     queryFn: () => api.searchAuthors(query, limit, offset, includeAllIds, fuzzy),
     enabled: !!query,
+    staleTime: STALE_TIME_DEFAULT,
   });
 }
 
@@ -65,6 +73,7 @@ export function useAuthor(authorId) {
     queryKey: queryKeys.author(authorId),
     queryFn: () => api.getAuthor(authorId),
     enabled: !!authorId,
+    staleTime: STALE_TIME_DEFAULT,
   });
 }
 
@@ -76,6 +85,7 @@ export function useAuthorCollaborators(authorId, limit = 30, fromYear = null, to
     queryKey: queryKeys.authorCollaborators(authorId, fromYear, toYear),
     queryFn: () => api.getAuthorCollaborators(authorId, limit, fromYear, toYear),
     enabled: !!authorId,
+    staleTime: STALE_TIME_DEFAULT,
     select: (data) => data.collaborators || [],
   });
 }
@@ -88,6 +98,7 @@ export function useTopRelations(authorId, topK = 20) {
     queryKey: queryKeys.authorTopRelations(authorId, topK),
     queryFn: () => api.getAuthorTopRelations(authorId, topK),
     enabled: !!authorId,
+    staleTime: STALE_TIME_DEFAULT,
   });
 }
 
@@ -99,7 +110,7 @@ export function useNetworkMetrics(authorId) {
     queryKey: queryKeys.networkMetrics(authorId),
     queryFn: () => api.getAuthorNetworkMetrics(authorId, true),
     enabled: !!authorId,
-    staleTime: 10 * 60 * 1000,
+    staleTime: STALE_TIME_STATIC,
     select: (data) => data.metrics,
   });
 }
@@ -112,6 +123,7 @@ export function useCoAuthoredPapers(authorId, collaboratorId, limit = 10, offset
     queryKey: queryKeys.coAuthoredPapers(authorId, collaboratorId, limit, offset, sortBy, sortOrder, fromYear, toYear),
     queryFn: () => api.getCoAuthoredPapers(authorId, collaboratorId, limit, offset, sortBy, sortOrder, fromYear, toYear),
     enabled: !!authorId && !!collaboratorId,
+    staleTime: STALE_TIME_DEFAULT,
   });
 }
 
@@ -122,7 +134,7 @@ export function useInstitutions(query = null) {
   return useQuery({
     queryKey: queryKeys.institutions(query),
     queryFn: () => api.getInstitutions({ query: query || null, limit: 300, offset: 0 }),
-    staleTime: 5 * 60 * 1000,
+    staleTime: STALE_TIME_STATIC,
     select: (data) => data.institutions || [],
   });
 }
@@ -135,6 +147,7 @@ export function useInstitutionRanking(institutionId) {
     queryKey: queryKeys.institutionRanking(institutionId),
     queryFn: () => api.getInstitutionRanking(institutionId, null, 100, 0, null, null, false),
     enabled: !!institutionId,
+    staleTime: STALE_TIME_DEFAULT,
   });
 }
 
@@ -145,7 +158,7 @@ export function useAdminAnalytics(days = 30, { enabled = true } = {}) {
   return useQuery({
     queryKey: queryKeys.adminAnalytics(days),
     queryFn: () => api.getAdminAnalytics(days),
-    staleTime: 1 * 60 * 1000,
+    staleTime: STALE_TIME_ADMIN,
     enabled,
   });
 }
@@ -155,6 +168,7 @@ export function useAdminVisits(limit = 20, offset = 0) {
     queryKey: queryKeys.adminVisits(limit, offset),
     queryFn: () => api.getAdminVisits(limit, offset),
     keepPreviousData: true,
+    staleTime: STALE_TIME_ADMIN,
   });
 }
 
@@ -166,6 +180,7 @@ export function useAdminCrawlTargets({ enabled = true } = {}) {
     queryKey: queryKeys.adminCrawlTargets,
     queryFn: () => api.getCrawlTargets(),
     enabled,
+    staleTime: STALE_TIME_ADMIN,
   });
 }
 
@@ -177,6 +192,7 @@ export function useAdminCrawlStatus({ enabled = true } = {}) {
     queryKey: queryKeys.adminCrawlStatus,
     queryFn: () => api.getAdminCrawlStatus(),
     refetchInterval: 30 * 1000,
+    staleTime: STALE_TIME_ADMIN,
     enabled,
   });
 }

@@ -6,6 +6,8 @@ import { Building2, ChevronRight, GraduationCap, FileText, Quote, Loader2, Alert
 import { cn } from '../lib/utils';
 import { motion } from 'framer-motion';
 
+const DEBOUNCE_DELAY_MS = 300;
+
 function RankingPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [institutionQuery, setInstitutionQuery] = useState('');
@@ -17,7 +19,7 @@ function RankingPage() {
   useEffect(() => {
     const handle = setTimeout(() => {
       setDebouncedQuery(institutionQuery);
-    }, 300);
+    }, DEBOUNCE_DELAY_MS);
     return () => clearTimeout(handle);
   }, [institutionQuery]);
 

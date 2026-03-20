@@ -1,9 +1,11 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, memo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Search, Loader2 } from 'lucide-react';
 import api from '../api/client';
 
-function SearchBox({ onSearch, placeholder = '搜索作者...', loading = false, defaultValue = '' }) {
+const DEBOUNCE_DELAY_MS = 300;
+
+const SearchBox = memo(function SearchBox({ onSearch, placeholder = '搜索作者...', loading = false, defaultValue = '' }) {
   const [query, setQuery] = useState(defaultValue);
   const [suggestions, setSuggestions] = useState([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
@@ -45,7 +47,7 @@ function SearchBox({ onSearch, placeholder = '搜索作者...', loading = false,
       } finally {
         setIsLoadingSuggestions(false);
       }
-    }, 300);
+    }, DEBOUNCE_DELAY_MS);
 
     return () => clearTimeout(timeoutId);
   }, [query]);
@@ -145,7 +147,7 @@ function SearchBox({ onSearch, placeholder = '搜索作者...', loading = false,
 
       {/* 下拉建议列表 */}
       {showSuggestions && (
-        <div className="absolute top-full left-0 right-0 mt-2 z-50 bg-background border border-border rounded-lg shadow-lg max-h-96 overflow-y-auto text-left">
+        <div role="listbox" className="absolute top-full left-0 right-0 mt-2 z-50 bg-background border border-border rounded-lg shadow-lg max-h-96 overflow-y-auto text-left">
           {isLoadingSuggestions ? (
             <div className="px-4 py-3 text-muted-foreground text-sm flex items-center">
               <Loader2 className="w-4 h-4 animate-spin mr-2" />
@@ -156,6 +158,8 @@ function SearchBox({ onSearch, placeholder = '搜索作者...', loading = false,
               {suggestions.map((author, index) => (
                 <li
                   key={author.id}
+                  role="option"
+                  aria-selected={index === selectedIndex}
                   className={`px-4 py-3 cursor-pointer transition-colors border-b border-border last:border-b-0 ${
                     index === selectedIndex ? 'bg-muted' : 'hover:bg-muted'
                   }`}
@@ -180,6 +184,6 @@ function SearchBox({ onSearch, placeholder = '搜索作者...', loading = false,
       )}
     </div>
   );
-}
+});
 
 export default SearchBox;
