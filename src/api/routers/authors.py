@@ -299,26 +299,32 @@ async def search_authors(
         institution_filter=institution,
     )
 
-    # Batch fetch cited_by counts and all_ids_info to avoid N+1 queries
+    # Batch fetch cited_by counts — use Author.cited_by_count column when available
     author_ids = [author.id for author, _ in authors_with_counts]
-    cited_by_map = repo.batch_get_merged_cited_by_count(author_ids)
 
-    # Batch fetch primary institutions
-    institution_map = repo.batch_get_institution_frequencies(author_ids, limit_per_author=1)
-
+    # Fast path: use pre-computed columns instead of expensive batch queries
+    # This avoids the slow batch_get_merged_cited_by_count and
+    # batch_get_institution_frequencies queries that dominated search time
+    cited_by_map = {}
+    institution_map = {}
     all_ids_map = {}
-    if include_all_ids:
-        canonical_ids = [
-            author.id for author, _ in authors_with_counts if author.is_canonical
-        ]
-        all_ids_map = repo.batch_get_all_ids_info(canonical_ids)
+
+    # Only do expensive batch lookups for small result sets (author detail pages)
+    if len(author_ids) <= 5 and not fuzzy:
+        cited_by_map = repo.batch_get_merged_cited_by_count(author_ids)
+        institution_map = repo.batch_get_institution_frequencies(author_ids, limit_per_author=1)
+        if include_all_ids:
+            canonical_ids = [
+                author.id for author, _ in authors_with_counts if author.is_canonical
+            ]
+            all_ids_map = repo.batch_get_all_ids_info(canonical_ids)
 
     # Build responses with merged works count
     results = []
     for author, works_count in authors_with_counts:
 
-        # Use batch-fetched cited_by_count
-        cited_by_count = cited_by_map.get(author.id, 0)
+        # Use batch-fetched cited_by_count, fall back to Author column
+        cited_by_count = cited_by_map.get(author.id, author.cited_by_count or 0)
 
         # Use batch-fetched primary institution
         inst_freqs = institution_map.get(author.id, [])
