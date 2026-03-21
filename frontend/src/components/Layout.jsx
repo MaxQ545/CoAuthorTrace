@@ -4,9 +4,11 @@ import { LayoutDashboard, Network, Trophy, BookOpen, Sun, Moon } from 'lucide-re
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '../lib/utils';
 import { useState, useEffect } from 'react';
+import { useI18n } from '../contexts/I18nContext';
 
 function Layout({ children }) {
   const location = useLocation();
+  const { locale, t, switchLocale } = useI18n();
   const [isDark, setIsDark] = useState(() => {
     // Check localStorage or system preference on initial load
     if (typeof window !== 'undefined') {
@@ -30,9 +32,9 @@ function Layout({ children }) {
   const toggleTheme = () => setIsDark(!isDark);
 
   const navItems = [
-    { path: '/', label: '首页', icon: LayoutDashboard },
-    { path: '/ranking', label: '机构排行', icon: Trophy },
-    { path: '/network', label: '合作网络', icon: Network },
+    { path: '/', label: t('nav.home'), icon: LayoutDashboard },
+    { path: '/ranking', label: t('nav.ranking'), icon: Trophy },
+    { path: '/network', label: t('nav.network'), icon: Network },
   ];
 
   return (
@@ -97,6 +99,15 @@ function Layout({ children }) {
                  </Link>
                );
             })}
+
+            {/* Locale Toggle Button */}
+            <button
+              onClick={() => switchLocale(locale === 'zh' ? 'en' : 'zh')}
+              className="ml-2 px-2 py-1 rounded-md text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-muted transition-colors focus:outline-none focus:ring-2 focus:ring-primary/20"
+              aria-label="Toggle language"
+            >
+              {locale === 'zh' ? 'EN' : '中'}
+            </button>
 
             {/* Theme Toggle Button */}
             <button

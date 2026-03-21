@@ -8,6 +8,7 @@ import App from './App'
 import ErrorBoundary from './components/ErrorBoundary'
 import { TimeFilterProvider } from './contexts/TimeFilterContext'
 import { AuthProvider } from './contexts/AuthContext'
+import { I18nProvider } from './contexts/I18nContext'
 import './index.css'
 
 const queryClient = new QueryClient({
@@ -25,12 +26,14 @@ ReactDOM.createRoot(document.getElementById('root')).render(
     <ErrorBoundary title="Application Error">
       <QueryClientProvider client={queryClient}>
         <BrowserRouter>
-          <AuthProvider>
-            <TimeFilterProvider>
-              <App />
-              <Toaster richColors position="top-right" />
-            </TimeFilterProvider>
-          </AuthProvider>
+          <I18nProvider>
+            <AuthProvider>
+              <TimeFilterProvider>
+                <App />
+                <Toaster richColors position="top-right" />
+              </TimeFilterProvider>
+            </AuthProvider>
+          </I18nProvider>
         </BrowserRouter>
         <ReactQueryDevtools initialIsOpen={false} />
       </QueryClientProvider>
