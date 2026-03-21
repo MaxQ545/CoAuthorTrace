@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useAuthor, useAuthorCollaborators, useNetworkMetrics } from '../hooks/queries';
 import AuthorCard from '../components/AuthorCard';
+import { SkeletonCard } from '../components/Skeleton';
 import CoAuthoredPapersModal from '../components/CoAuthoredPapersModal';
 import ResearchFieldsBadges from '../components/ResearchFieldsBadges';
 import { useTimeFilter } from '../contexts/TimeFilterContext';
@@ -55,9 +56,9 @@ function AuthorPage() {
 
   if (loading) {
     return (
-      <div className="flex flex-col items-center justify-center h-[60vh] text-muted-foreground">
-        <Loader2 className="h-10 w-10 animate-spin mb-4 text-primary" />
-        <p>正在加载学者档案...</p>
+      <div className="space-y-8">
+        <SkeletonCard />
+        <SkeletonCard />
       </div>
     );
   }
