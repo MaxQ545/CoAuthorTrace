@@ -12,7 +12,6 @@ test.describe('Ranking & Institutions API', () => {
   });
 
   test('should return institution ranking data for a small institution', async ({ request }) => {
-    // First get institutions sorted by author_count and pick a small one
     const instResponse = await safeGet(request, '/api/v1/authors/institutions');
     expect(instResponse.ok()).toBeTruthy();
     const instBody = await instResponse.json();
@@ -22,14 +21,13 @@ test.describe('Ranking & Institutions API', () => {
       return;
     }
 
-    // Pick the institution with the fewest authors to get a fast response
     const sorted = [...instBody.institutions].sort((a: { author_count: number }, b: { author_count: number }) => a.author_count - b.author_count);
     const institutionId = sorted[0].id;
 
     const response = await safeGet(
       request,
       `/api/v1/authors/ranking/by-institution?institution_id=${institutionId}&limit=1`,
-      { timeout: 45000 }
+      { timeout: 30000 }
     );
     expect(response.ok()).toBeTruthy();
     const body = await response.json();
@@ -53,7 +51,7 @@ test.describe('Ranking & Institutions API', () => {
     const response = await safeGet(
       request,
       `/api/v1/authors/ranking/by-institution?institution_id=${institutionId}&limit=1`,
-      { timeout: 45000 }
+      { timeout: 30000 }
     );
     expect(response.ok()).toBeTruthy();
     const body = await response.json();

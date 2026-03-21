@@ -39,7 +39,6 @@ test.describe('Admin & Metrics API', () => {
     const attempts = 10;
     let got429 = false;
 
-    // Fire login attempts sequentially to avoid overwhelming the server
     for (let i = 0; i < attempts; i++) {
       try {
         const resp = await request.post('/api/v1/admin/login', {

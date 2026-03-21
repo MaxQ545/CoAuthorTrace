@@ -1,6 +1,6 @@
 import { test, APIRequestContext } from '@playwright/test';
 
-const DEFAULT_TIMEOUT = 30000;
+const DEFAULT_TIMEOUT = 15000;
 
 /**
  * Perform an API GET request, skipping the test gracefully if the server is unreachable.

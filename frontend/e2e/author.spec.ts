@@ -3,7 +3,7 @@ import { safeGet } from './helpers';
 
 test.describe('Author Detail API', () => {
   test('should return author detail by ID from search', async ({ request }) => {
-    const searchResponse = await safeGet(request, '/api/v1/authors/search?q=Zhang&limit=1', { timeout: 30000 });
+    const searchResponse = await safeGet(request, '/api/v1/authors/search?q=Zhang&limit=1', { timeout: 10000 });
     expect(searchResponse.ok()).toBeTruthy();
     const searchBody = await searchResponse.json();
 
@@ -21,7 +21,7 @@ test.describe('Author Detail API', () => {
   });
 
   test('should return collaborators for an author', async ({ request }) => {
-    const searchResponse = await safeGet(request, '/api/v1/authors/search?q=Zhang&limit=1', { timeout: 30000 });
+    const searchResponse = await safeGet(request, '/api/v1/authors/search?q=Zhang&limit=1', { timeout: 10000 });
     expect(searchResponse.ok()).toBeTruthy();
     const searchBody = await searchResponse.json();
 
@@ -34,7 +34,8 @@ test.describe('Author Detail API', () => {
     const response = await safeGet(request, `/api/v1/authors/${authorId}/collaborators`);
     expect(response.ok()).toBeTruthy();
     const body = await response.json();
-    expect(Array.isArray(body)).toBeTruthy();
+    expect(body).toHaveProperty('collaborators');
+    expect(Array.isArray(body.collaborators)).toBeTruthy();
   });
 
   test('should return error for non-existent author', async ({ request }) => {
@@ -44,7 +45,7 @@ test.describe('Author Detail API', () => {
   });
 
   test('should return publication timeline', async ({ request }) => {
-    const searchResponse = await safeGet(request, '/api/v1/authors/search?q=Zhang&limit=1', { timeout: 30000 });
+    const searchResponse = await safeGet(request, '/api/v1/authors/search?q=Zhang&limit=1', { timeout: 10000 });
     expect(searchResponse.ok()).toBeTruthy();
     const searchBody = await searchResponse.json();
 
@@ -57,6 +58,7 @@ test.describe('Author Detail API', () => {
     const response = await safeGet(request, `/api/v1/authors/${authorId}/publication-timeline`);
     expect(response.ok()).toBeTruthy();
     const body = await response.json();
-    expect(Array.isArray(body)).toBeTruthy();
+    expect(body).toHaveProperty('timeline');
+    expect(Array.isArray(body.timeline)).toBeTruthy();
   });
 });
