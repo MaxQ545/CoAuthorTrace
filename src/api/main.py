@@ -1,6 +1,7 @@
 """
 FastAPI application for Coauthor Tracing System.
 """
+import hashlib
 import logging
 import time
 import uuid
@@ -100,6 +101,30 @@ def create_app() -> FastAPI:
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
         response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
         return response
+
+    # ETag caching middleware — 304 for unchanged API JSON responses
+    @app.middleware("http")
+    async def etag_middleware(request: Request, call_next):
+        response = await call_next(request)
+        if request.method != "GET" or not request.url.path.startswith("/api/"):
+            return response
+        if response.status_code != 200:
+            return response
+        content_type = response.headers.get("content-type", "")
+        if "application/json" not in content_type:
+            return response
+        body = b""
+        async for chunk in response.body_iterator:
+            body += chunk
+        etag = f'W/"{hashlib.md5(body).hexdigest()[:16]}"'
+        if request.headers.get("if-none-match") == etag:
+            return Response(status_code=304, headers={"ETag": etag})
+        return Response(
+            content=body,
+            status_code=response.status_code,
+            headers={**dict(response.headers), "ETag": etag},
+            media_type=response.media_type,
+        )
 
     # Include routers
     app.include_router(
