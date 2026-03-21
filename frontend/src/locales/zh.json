@@ -130,5 +130,27 @@
   "ranking.research_fields": "研究领域",
   "ranking.papers_count": "论文数",
   "ranking.citations_count": "被引数",
-  "ranking.select_institution": "请从左侧选择一个机构查看排名"
+  "ranking.select_institution": "请从左侧选择一个机构查看排名",
+
+  "papers_modal.title": "合作论文详情",
+  "papers_modal.sort": "排序:",
+  "papers_modal.sort_date": "日期",
+  "papers_modal.sort_citations": "引用",
+  "papers_modal.sort_title": "标题",
+  "papers_modal.total": "共 {count} 篇合作论文",
+  "papers_modal.tooltip_papers": "{count} 篇",
+  "papers_modal.tooltip_papers_label": "论文数",
+  "papers_modal.tooltip_year": "{year} 年",
+  "papers_modal.loading": "正在加载...",
+  "papers_modal.load_error": "无法加载论文列表",
+  "papers_modal.no_data": "暂无符合条件的论文数据",
+  "papers_modal.prev_page": "上一页",
+  "papers_modal.page_info": "第 {current} / {total} 页",
+  "papers_modal.next_page": "下一页",
+
+  "timeline.title": "发表趋势",
+  "timeline.loading": "加载中...",
+  "timeline.papers_count": "论文数",
+  "timeline.citations_count": "被引次数",
+  "timeline.year_suffix": "{year} 年"
 }

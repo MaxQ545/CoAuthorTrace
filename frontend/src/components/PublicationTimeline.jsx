@@ -1,4 +1,5 @@
 import { usePublicationTimeline } from '../hooks/queries';
+import { useI18n } from '../contexts/I18nContext';
 import { TrendingUp, Loader2 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -14,11 +15,21 @@ import {
 } from 'recharts';
 
 function PublicationTimeline({ authorId, fromYear = null, toYear = null }) {
+  const { t } = useI18n();
   const { data: timeline = [], isLoading } = usePublicationTimeline(
     authorId,
     fromYear,
     toYear,
   );
+
+  // Detect dark mode for recharts colors
+  const isDark = document.documentElement.classList.contains('dark');
+  const chartColors = {
+    bar: isDark ? '#60a5fa' : '#3b82f6',
+    line: isDark ? '#4ade80' : '#22c55e',
+    axis: isDark ? '#9ca3af' : '#6b7280',
+    grid: isDark ? '#374151' : '#e5e7eb',
+  };
 
   if (isLoading) {
     return (
@@ -26,12 +37,12 @@ function PublicationTimeline({ authorId, fromYear = null, toYear = null }) {
         <div className="flex items-center gap-2 mb-6">
           <TrendingUp className="text-primary" size={20} />
           <h2 className="text-lg font-semibold text-foreground">
-            发表趋势
+            {t('timeline.title')}
           </h2>
         </div>
         <div className="flex items-center justify-center h-48 text-muted-foreground">
           <Loader2 className="h-6 w-6 animate-spin mr-2" />
-          加载中...
+          {t('timeline.loading')}
         </div>
       </div>
     );
@@ -46,53 +57,54 @@ function PublicationTimeline({ authorId, fromYear = null, toYear = null }) {
       <div className="flex items-center gap-2 mb-6">
         <TrendingUp className="text-primary" size={20} />
         <h2 className="text-lg font-semibold text-foreground">
-          发表趋势
+          {t('timeline.title')}
         </h2>
       </div>
 
       <ResponsiveContainer width="100%" height={300}>
         <ComposedChart data={timeline} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
-          <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
+          <CartesianGrid strokeDasharray="3 3" stroke={chartColors.grid} className="opacity-30" />
           <XAxis
             dataKey="year"
-            tick={{ fontSize: 12 }}
+            tick={{ fontSize: 12, fill: chartColors.axis }}
             tickFormatter={(v) => String(v)}
           />
           <YAxis
             yAxisId="left"
-            tick={{ fontSize: 12 }}
+            tick={{ fontSize: 12, fill: chartColors.axis }}
             allowDecimals={false}
-            label={{ value: '论文数', angle: -90, position: 'insideLeft', style: { fontSize: 12, fill: 'var(--muted-foreground)' } }}
+            label={{ value: t('timeline.papers_count'), angle: -90, position: 'insideLeft', style: { fontSize: 12, fill: chartColors.axis } }}
           />
           <YAxis
             yAxisId="right"
             orientation="right"
-            tick={{ fontSize: 12 }}
+            tick={{ fontSize: 12, fill: chartColors.axis }}
             allowDecimals={false}
-            label={{ value: '被引次数', angle: 90, position: 'insideRight', style: { fontSize: 12, fill: 'var(--muted-foreground)' } }}
+            label={{ value: t('timeline.citations_count'), angle: 90, position: 'insideRight', style: { fontSize: 12, fill: chartColors.axis } }}
           />
           <Tooltip
             contentStyle={{
-              backgroundColor: 'var(--card)',
-              border: '1px solid var(--border)',
+              backgroundColor: isDark ? '#1f2937' : '#ffffff',
+              border: `1px solid ${chartColors.grid}`,
               borderRadius: '8px',
               fontSize: '13px',
+              color: isDark ? '#e5e7eb' : '#1f2937',
             }}
             formatter={(value, name) => {
-              const label = name === 'works_count' ? '论文数' : '被引次数';
+              const label = name === 'works_count' ? t('timeline.papers_count') : t('timeline.citations_count');
               return [value, label];
             }}
-            labelFormatter={(label) => `${label} 年`}
+            labelFormatter={(label) => t('timeline.year_suffix', { year: label })}
           />
           <Legend
             formatter={(value) =>
-              value === 'works_count' ? '论文数' : '被引次数'
+              value === 'works_count' ? t('timeline.papers_count') : t('timeline.citations_count')
             }
           />
           <Bar
             yAxisId="left"
             dataKey="works_count"
-            fill="hsl(221, 83%, 53%)"
+            fill={chartColors.bar}
             radius={[4, 4, 0, 0]}
             maxBarSize={40}
           />
@@ -100,7 +112,7 @@ function PublicationTimeline({ authorId, fromYear = null, toYear = null }) {
             yAxisId="right"
             type="monotone"
             dataKey="cited_by_count"
-            stroke="hsl(142, 71%, 45%)"
+            stroke={chartColors.line}
             strokeWidth={2}
             dot={{ r: 3 }}
             activeDot={{ r: 5 }}

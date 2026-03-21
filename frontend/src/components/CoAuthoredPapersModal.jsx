@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useCoAuthoredPapers } from '../hooks/queries';
 import { useTimeFilter } from '../contexts/TimeFilterContext';
+import { useI18n } from '../contexts/I18nContext';
 import { X, Calendar, BookOpen, ExternalLink, ArrowUpDown, Lock, Unlock, Loader2, Quote } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '../lib/utils';
@@ -14,6 +15,7 @@ function CoAuthoredPapersModal({
   collaboratorId,
   collaboratorName
 }) {
+  const { t } = useI18n();
   const { timeRange } = useTimeFilter();
 
   // Pagination and sorting state
@@ -35,6 +37,14 @@ function CoAuthoredPapersModal({
 
   const papers = data?.papers || [];
   const total = data?.total || 0;
+
+  // Detect dark mode for recharts colors
+  const isDark = document.documentElement.classList.contains('dark');
+  const chartColors = {
+    bar: isDark ? '#60a5fa' : '#3b82f6',
+    axis: isDark ? '#9ca3af' : '#6b7280',
+    grid: isDark ? '#374151' : '#e5e7eb',
+  };
 
   // Aggregate papers by publication year for mini-timeline chart
   const yearData = useMemo(() => {
@@ -94,11 +104,11 @@ function CoAuthoredPapersModal({
             <div className="p-6 border-b border-border bg-muted/10 flex items-start justify-between">
               <div>
                 <h2 className="text-xl font-bold text-foreground">
-                  合作论文详情
+                  {t('papers_modal.title')}
                 </h2>
                 <p className="text-sm text-muted-foreground mt-1 flex items-center gap-2">
                   <span className="font-medium text-foreground">{authorName}</span>
-                  <span className="text-muted-foreground/50">×</span>
+                  <span className="text-muted-foreground/50">&times;</span>
                   <span className="font-medium text-foreground">{collaboratorName}</span>
                 </p>
               </div>
@@ -113,11 +123,11 @@ function CoAuthoredPapersModal({
             {/* Toolbar */}
             <div className="px-6 py-3 border-b border-border bg-muted/5 flex flex-wrap items-center justify-between gap-3">
               <div className="flex items-center gap-2 text-sm">
-                <span className="text-muted-foreground">排序:</span>
+                <span className="text-muted-foreground">{t('papers_modal.sort')}</span>
                 {[
-                  { id: 'publication_date', label: '日期' },
-                  { id: 'cited_by_count', label: '引用' },
-                  { id: 'title', label: '标题' }
+                  { id: 'publication_date', label: t('papers_modal.sort_date') },
+                  { id: 'cited_by_count', label: t('papers_modal.sort_citations') },
+                  { id: 'title', label: t('papers_modal.sort_title') }
                 ].map((item) => (
                   <button
                     key={item.id}
@@ -135,7 +145,7 @@ function CoAuthoredPapersModal({
                 ))}
               </div>
               <div className="text-xs font-medium text-muted-foreground bg-secondary px-2.5 py-1 rounded-full">
-                共 {total} 篇合作论文
+                {t('papers_modal.total', { count: total })}
               </div>
             </div>
 
@@ -146,23 +156,29 @@ function CoAuthoredPapersModal({
                   <BarChart data={yearData} margin={{ top: 4, right: 8, bottom: 0, left: -20 }}>
                     <XAxis
                       dataKey="year"
-                      tick={{ fontSize: 11 }}
+                      tick={{ fontSize: 11, fill: chartColors.axis }}
                       tickLine={false}
                       axisLine={false}
                     />
                     <YAxis
                       allowDecimals={false}
-                      tick={{ fontSize: 11 }}
+                      tick={{ fontSize: 11, fill: chartColors.axis }}
                       tickLine={false}
                       axisLine={false}
                       width={30}
                     />
                     <Tooltip
-                      contentStyle={{ fontSize: 12, borderRadius: 8 }}
-                      formatter={(value) => [`${value} 篇`, '论文数']}
-                      labelFormatter={(label) => `${label} 年`}
+                      contentStyle={{
+                        fontSize: 12,
+                        borderRadius: 8,
+                        backgroundColor: isDark ? '#1f2937' : '#ffffff',
+                        border: `1px solid ${chartColors.grid}`,
+                        color: isDark ? '#e5e7eb' : '#1f2937',
+                      }}
+                      formatter={(value) => [t('papers_modal.tooltip_papers', { count: value }), t('papers_modal.tooltip_papers_label')]}
+                      labelFormatter={(label) => t('papers_modal.tooltip_year', { year: label })}
                     />
-                    <Bar dataKey="count" fill="#3b82f6" radius={[3, 3, 0, 0]} />
+                    <Bar dataKey="count" fill={chartColors.bar} radius={[3, 3, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
@@ -173,15 +189,15 @@ function CoAuthoredPapersModal({
               {loading ? (
                 <div className="flex flex-col items-center justify-center h-48 text-muted-foreground">
                   <Loader2 className="h-8 w-8 animate-spin mb-3 text-primary" />
-                  <p>正在加载...</p>
+                  <p>{t('papers_modal.loading')}</p>
                 </div>
               ) : error ? (
                 <div className="flex flex-col items-center justify-center h-48 text-destructive">
-                  <p className="font-medium mb-2">无法加载论文列表</p>
+                  <p className="font-medium mb-2">{t('papers_modal.load_error')}</p>
                 </div>
               ) : papers.length === 0 ? (
                 <div className="text-center py-12 text-muted-foreground">
-                  暂无符合条件的论文数据
+                  {t('papers_modal.no_data')}
                 </div>
               ) : (
                 <div className="space-y-4">
@@ -256,17 +272,17 @@ function CoAuthoredPapersModal({
                   disabled={offset === 0}
                   className="px-4 py-2 text-sm font-medium rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-secondary transition-colors"
                 >
-                  上一页
+                  {t('papers_modal.prev_page')}
                 </button>
                 <span className="text-sm font-medium text-muted-foreground">
-                  第 <span className="text-foreground">{currentPage}</span> / {totalPages} 页
+                  {t('papers_modal.page_info', { current: currentPage, total: totalPages })}
                 </span>
                 <button
                   onClick={() => setOffset(offset + limit)}
                   disabled={currentPage >= totalPages}
                   className="px-4 py-2 text-sm font-medium rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-secondary transition-colors"
                 >
-                  下一页
+                  {t('papers_modal.next_page')}
                 </button>
               </div>
             )}

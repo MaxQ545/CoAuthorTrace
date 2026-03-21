@@ -130,5 +130,27 @@
   "ranking.research_fields": "Research Fields",
   "ranking.papers_count": "Papers",
   "ranking.citations_count": "Citations",
-  "ranking.select_institution": "Select an institution from the left to view rankings"
+  "ranking.select_institution": "Select an institution from the left to view rankings",
+
+  "papers_modal.title": "Co-authored Papers",
+  "papers_modal.sort": "Sort:",
+  "papers_modal.sort_date": "Date",
+  "papers_modal.sort_citations": "Citations",
+  "papers_modal.sort_title": "Title",
+  "papers_modal.total": "{count} co-authored papers",
+  "papers_modal.tooltip_papers": "{count}",
+  "papers_modal.tooltip_papers_label": "Papers",
+  "papers_modal.tooltip_year": "{year}",
+  "papers_modal.loading": "Loading...",
+  "papers_modal.load_error": "Unable to load paper list",
+  "papers_modal.no_data": "No matching paper data",
+  "papers_modal.prev_page": "Previous",
+  "papers_modal.page_info": "Page {current} / {total}",
+  "papers_modal.next_page": "Next",
+
+  "timeline.title": "Publication Trend",
+  "timeline.loading": "Loading...",
+  "timeline.papers_count": "Papers",
+  "timeline.citations_count": "Citations",
+  "timeline.year_suffix": "{year}"
 }
