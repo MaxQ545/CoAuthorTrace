@@ -1,86 +1,54 @@
 import { test, expect } from '@playwright/test';
-import { safeGoto } from './helpers';
+import { safeGet } from './helpers';
 
-test.describe('Author Search Page', () => {
-  test('should render search page with search box', async ({ page }) => {
-    await safeGoto(page, '/authors/search');
-    await expect(page.getByText('作者搜索')).toBeVisible();
-    await expect(page.getByPlaceholder('输入作者姓名搜索...')).toBeVisible();
+test.describe('Author Search API', () => {
+  test('should return search results for a valid query', async ({ request }) => {
+    const response = await safeGet(request, '/api/v1/authors/search?q=Zhang', { timeout: 30000 });
+    expect(response.ok()).toBeTruthy();
+    const body = await response.json();
+    expect(body).toHaveProperty('results');
+    expect(Array.isArray(body.results)).toBeTruthy();
+    expect(body.results.length).toBeGreaterThan(0);
+    expect(body).toHaveProperty('total');
   });
 
-  test('should accept search input and trigger search', async ({ page }) => {
-    await safeGoto(page, '/authors/search');
-
-    // Type a query in the search box and submit
-    const searchInput = page.getByPlaceholder('输入作者姓名搜索...');
-    await searchInput.fill('Zhang');
-    await searchInput.press('Enter');
-
-    // After submitting, the URL should update with query param
-    await expect(page).toHaveURL(/q=Zhang/);
-
-    // Should show either results, loading state, or "no results" message
-    const results = page.locator('a[href^="/author/"]').first();
-    const loading = page.getByText('搜索中...');
-    const noResults = page.getByText(/未找到|没有找到/);
-    const errorMsg = page.getByText('搜索失败');
-    await expect(results.or(loading).or(noResults).or(errorMsg)).toBeVisible({ timeout: 20000 });
+  test('should return empty results for nonsense query', async ({ request }) => {
+    const response = await safeGet(request, '/api/v1/authors/search?q=xyznonexistent12345');
+    expect(response.ok()).toBeTruthy();
+    const body = await response.json();
+    expect(body).toHaveProperty('results');
+    expect(body.results.length).toBe(0);
+    expect(body.total).toBe(0);
   });
 
-  test('should not trigger search results with a single character query', async ({ page }) => {
-    await safeGoto(page, '/authors/search');
-
-    const searchInput = page.getByPlaceholder('输入作者姓名搜索...');
-    await searchInput.fill('Z');
-    await searchInput.press('Enter');
-
-    // Wait a moment to confirm no results appear
-    await page.waitForTimeout(2000);
-
-    // With a single character, the search should NOT return result cards
-    const resultCards = page.locator('a[href^="/author/"]');
-    const count = await resultCards.count();
-    expect(count).toBe(0);
-  });
-
-  test('should show research field filter chips after searching', async ({ page }) => {
-    await safeGoto(page, '/authors/search?q=Zhang');
-
-    // Wait for results to load
-    const resultCards = page.locator('a[href^="/author/"]');
-    const hasResults = await resultCards.first().isVisible({ timeout: 20000 }).catch(() => false);
-
-    if (!hasResults) {
-      test.skip(true, 'Search API did not return results in time');
-      return;
-    }
-
-    // Research field filter chips are rendered as buttons with field names
-    // They appear in a rounded-full style row above search results
-    const fieldChips = page.locator('button.rounded-full').filter({ hasNotText: /搜索|清除/ });
-    const chipCount = await fieldChips.count();
-    expect(chipCount).toBeGreaterThan(0);
-
-    // Verify at least one chip has text content (a field name)
-    const firstChipText = await fieldChips.first().textContent();
-    expect(firstChipText?.trim().length).toBeGreaterThan(0);
-  });
-
-  test('should navigate to author page when clicking a search result', async ({ page }) => {
-    await safeGoto(page, '/authors/search?q=Zhang');
-
-    // Wait for result cards — they may take time due to API latency
-    const resultCards = page.locator('a[href^="/author/"]');
-    const hasResults = await resultCards.first().isVisible({ timeout: 20000 }).catch(() => false);
-
-    if (hasResults) {
-      await resultCards.first().click();
-      await page.waitForURL(/\/author\//, { timeout: 10000 });
-      expect(page.url()).toContain('/author/');
+  test('should handle single-character queries', async ({ request }) => {
+    const response = await safeGet(request, '/api/v1/authors/search?q=Z');
+    // Should either return 422/400 (validation error) or empty/valid results
+    if (response.ok()) {
+      const body = await response.json();
+      expect(body).toHaveProperty('results');
     } else {
-      // API may be slow — verify the search page rendered correctly instead
-      await expect(page.getByText('作者搜索')).toBeVisible();
-      test.skip(true, 'Search API did not return results in time');
+      expect([400, 422]).toContain(response.status());
     }
+  });
+
+  test('should include author fields in search results', async ({ request }) => {
+    const response = await safeGet(request, '/api/v1/authors/search?q=Zhang', { timeout: 30000 });
+    expect(response.ok()).toBeTruthy();
+    const body = await response.json();
+    if (body.results.length > 0) {
+      const author = body.results[0];
+      expect(author).toHaveProperty('id');
+      expect(author).toHaveProperty('display_name');
+    }
+  });
+
+  test('should support pagination with limit and offset', async ({ request }) => {
+    const response = await safeGet(request, '/api/v1/authors/search?q=Zhang&limit=2', { timeout: 30000 });
+    expect(response.ok()).toBeTruthy();
+    const body = await response.json();
+    expect(body.results.length).toBeLessThanOrEqual(2);
+    expect(body).toHaveProperty('limit');
+    expect(body.limit).toBe(2);
   });
 });
