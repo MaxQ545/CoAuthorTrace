@@ -62,7 +62,7 @@ function Layout({ children }) {
         Skip to content
       </a>
       {/* Navbar */}
-      <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+      <header data-no-print className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
         <div className="container mx-auto px-4 h-16 flex items-center justify-between">
           <Link to="/" className="flex items-center space-x-2 group">
             <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center text-primary-foreground transform group-hover:rotate-12 transition-transform">
@@ -171,7 +171,7 @@ function Layout({ children }) {
       </header>
 
       {/* Time Filter Banner */}
-      <div className="bg-muted/30 border-b">
+      <div data-no-print className="bg-muted/30 border-b">
         <div className="container mx-auto px-4 py-2">
            <TimeRangeSelector />
         </div>
@@ -190,7 +190,7 @@ function Layout({ children }) {
       </main>
 
       {/* Footer */}
-      <footer className="border-t bg-muted/20 mt-auto">
+      <footer data-no-print className="border-t bg-muted/20 mt-auto">
         <div className="container mx-auto px-4 py-8">
           <div className="flex flex-col md:flex-row justify-between items-center text-sm text-muted-foreground">
             <p>© 2026 CoAuthorTrace. Powered by OpenAlex.</p>

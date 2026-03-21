@@ -105,3 +105,41 @@
 ::-webkit-scrollbar-thumb:hover {
   @apply bg-muted-foreground/40;
 }
+
+/* Print-friendly styles */
+@media print {
+  /* Hide navigation, footer, buttons, interactive elements */
+  nav, .no-print, button:not(.print-include),
+  [data-no-print], .fixed, .sticky {
+    display: none !important;
+  }
+
+  /* Reset backgrounds for clean printing */
+  body, .bg-background, .bg-card {
+    background: white !important;
+    color: black !important;
+  }
+
+  /* Ensure content fills the page */
+  main {
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  /* Make cards print cleanly */
+  .border {
+    border-color: #ddd !important;
+  }
+
+  /* Avoid page breaks inside cards */
+  .rounded-xl, .rounded-lg {
+    break-inside: avoid;
+  }
+
+  /* Show URLs for links */
+  a[href^="http"]::after {
+    content: " (" attr(href) ")";
+    font-size: 0.8em;
+    color: #666;
+  }
+}

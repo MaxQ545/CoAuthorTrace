@@ -20,7 +20,8 @@ import {
   ChevronRight,
   Loader2,
   AlertTriangle,
-  Download
+  Download,
+  Printer
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { cn } from '../lib/utils';
@@ -216,6 +217,13 @@ function AuthorPage() {
                     </div>
                   )}
                 </div>
+                <button
+                  onClick={() => window.print()}
+                  className="no-print inline-flex items-center gap-1.5 px-3 py-1 bg-muted text-muted-foreground text-sm font-medium rounded-full hover:bg-muted/80 transition-colors"
+                  title="打印学者档案"
+                >
+                  <Printer size={14} /> 打印
+                </button>
               </div>
 
               <div className="flex items-center gap-2 text-muted-foreground">
