@@ -20,30 +20,33 @@ from src.database.models import get_engine
 
 
 def migrate():
-    """Create pg_trgm indexes for fuzzy text search."""
-    engine = get_engine()
+    """Create pg_trgm indexes for fuzzy text search.
 
-    with engine.connect() as conn:
-        # Ensure pg_trgm extension is available
-        conn.execute(text("CREATE EXTENSION IF NOT EXISTS pg_trgm"))
-        conn.commit()
+    Uses raw psycopg2 connection with autocommit for CREATE INDEX CONCURRENTLY.
+    """
+    engine = get_engine()
+    raw_conn = engine.raw_connection()
+    raw_conn.set_session(autocommit=True)
+    cursor = raw_conn.cursor()
+
+    try:
+        cursor.execute("CREATE EXTENSION IF NOT EXISTS pg_trgm")
         print("pg_trgm extension ensured")
 
-        # Author display_name trigram index
-        conn.execute(text(
+        cursor.execute(
             "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_author_display_name_trgm "
             "ON authors USING gin (display_name gin_trgm_ops)"
-        ))
-        conn.commit()
+        )
         print("Author display_name trigram index created")
 
-        # Institution name trigram index
-        conn.execute(text(
+        cursor.execute(
             "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_institution_name_trgm "
             "ON institution_stats USING gin (institution_name gin_trgm_ops)"
-        ))
-        conn.commit()
+        )
         print("Institution name trigram index created")
+    finally:
+        cursor.close()
+        raw_conn.close()
 
     print("\nSearch index migration completed successfully!")
 
