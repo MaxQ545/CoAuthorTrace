@@ -2,6 +2,7 @@
 FastAPI application for Coauthor Tracing System.
 """
 import logging
+import time
 import uuid
 from contextvars import ContextVar
 from contextlib import asynccontextmanager
@@ -16,6 +17,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from config.settings import settings
 from src.database.models import init_database, get_session
 from src.api.routers import admin, authors, network, system
+from src.api.metrics import record_request, render_prometheus
 
 # Structured logging with request ID
 request_id_var: ContextVar[str] = ContextVar("request_id", default="-")
@@ -76,13 +78,17 @@ def create_app() -> FastAPI:
         allow_headers=["Content-Type", "Authorization"],
     )
 
-    # Request ID middleware
+    # Request ID + metrics middleware
     @app.middleware("http")
     async def request_id_middleware(request: Request, call_next):
         rid = request.headers.get("X-Request-ID", str(uuid.uuid4()))
         request_id_var.set(rid)
+        start = time.time()
         response = await call_next(request)
+        duration = time.time() - start
         response.headers["X-Request-ID"] = rid
+        if request.url.path != "/metrics":
+            record_request(request.method, request.url.path, response.status_code, duration)
         return response
 
     # Security headers middleware
@@ -125,6 +131,11 @@ def create_app() -> FastAPI:
             "version": "1.0.0",
             "docs": "/api/docs",
         }
+
+    @app.get("/metrics", include_in_schema=False)
+    async def metrics():
+        """Prometheus-compatible metrics endpoint."""
+        return Response(content=render_prometheus(), media_type="text/plain")
 
     @app.get("/health")
     async def health():
