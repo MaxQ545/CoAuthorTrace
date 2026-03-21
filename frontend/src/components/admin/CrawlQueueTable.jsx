@@ -129,7 +129,7 @@ function ActionButtons({ row, onDetail }) {
   }
 }
 
-function SortableRow({ row, children }) {
+function SortableRow({ row, children, hideDragHandle = false }) {
   const isQueued = row.original.status === 'queued'
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: row.original.institution_id,
@@ -145,7 +145,7 @@ function SortableRow({ row, children }) {
   return (
     <tr ref={setNodeRef} style={style} className="border-b border-border/50 hover:bg-muted/50">
       {children.map((cell, i) =>
-        i === 0 ? (
+        !hideDragHandle && i === 0 ? (
           <td key={i} className="py-2 px-2 w-8">
             {isQueued ? (
               <span {...attributes} {...listeners} className="cursor-grab text-muted-foreground hover:text-foreground">
@@ -158,7 +158,7 @@ function SortableRow({ row, children }) {
             )}
           </td>
         ) : (
-          <td key={cell?.key || i} className={cn('py-2 px-2', i === 1 && 'font-medium')}>
+          <td key={cell?.key || i} className={cn('py-2 px-2', ((!hideDragHandle && i === 1) || (hideDragHandle && i === 0)) && 'font-medium')}>
             {cell}
           </td>
         )
@@ -167,7 +167,8 @@ function SortableRow({ row, children }) {
   )
 }
 
-export default function CrawlQueueTable({ data, onDetail }) {
+export default function CrawlQueueTable({ data, onDetail, role = 'admin' }) {
+  const isAdmin = role === 'admin'
   const [statusFilter, setStatusFilter] = useState('all')
   const [searchQuery, setSearchQuery] = useState('')
   const [localOrder, setLocalOrder] = useState(null)
@@ -297,12 +298,12 @@ export default function CrawlQueueTable({ data, onDetail }) {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-border bg-muted/50 text-left text-muted-foreground">
-                    <th className="py-2 px-2 w-8"></th>
+                    {isAdmin && <th className="py-2 px-2 w-8"></th>}
                     <th className="py-2 px-2">Institution</th>
                     <th className="py-2 px-2">Status</th>
                     <th className="py-2 px-2">Progress</th>
                     <th className="py-2 px-2">Last Run</th>
-                    <th className="py-2 px-2">Actions</th>
+                    {isAdmin && <th className="py-2 px-2">Actions</th>}
                   </tr>
                 </thead>
                 <tbody>
@@ -310,9 +311,10 @@ export default function CrawlQueueTable({ data, onDetail }) {
                     <SortableRow
                       key={inst.institution_id}
                       row={{ original: inst, id: inst.institution_id }}
+                      hideDragHandle={!isAdmin}
                     >
                       {[
-                        /* drag handle placeholder */ null,
+                        ...(isAdmin ? [/* drag handle placeholder */ null] : []),
                         <span
                           key="name"
                           className="cursor-pointer hover:underline"
@@ -334,7 +336,7 @@ export default function CrawlQueueTable({ data, onDetail }) {
                               ? new Date(inst.started_at).toLocaleString()
                               : '-'}
                         </span>,
-                        <ActionButtons key="actions" row={inst} onDetail={onDetail} />,
+                        ...(isAdmin ? [<ActionButtons key="actions" row={inst} onDetail={onDetail} />] : []),
                       ]}
                     </SortableRow>
                   ))}

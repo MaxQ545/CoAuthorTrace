@@ -1,11 +1,12 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { Lock, LogIn } from 'lucide-react'
+import { Lock, LogIn, User } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import api from '../api/client'
 
 export default function AdminLoginPage() {
+  const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
@@ -17,9 +18,9 @@ export default function AdminLoginPage() {
     setError('')
     setLoading(true)
     try {
-      const res = await api.adminLogin(password)
+      const res = await api.adminLogin(password, username || null)
       if (res.ok) {
-        login(res.token)
+        login(res.token, res.role || 'admin')
         navigate('/admin')
       } else {
         setError(res.error || 'Login failed')
@@ -50,12 +51,21 @@ export default function AdminLoginPage() {
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
               <input
+                type="text"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                placeholder="Username (optional)"
+                className="w-full px-4 py-2.5 rounded-lg border border-border bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition"
+                autoFocus
+              />
+            </div>
+            <div>
+              <input
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="Enter admin password"
                 className="w-full px-4 py-2.5 rounded-lg border border-border bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition"
-                autoFocus
               />
             </div>
             {error && (
