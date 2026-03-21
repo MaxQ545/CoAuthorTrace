@@ -1,9 +1,9 @@
-import { useEffect, useState, useRef, useCallback } from 'react';
+import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useAuthorSearch } from '../hooks/queries';
 import SearchBox from '../components/SearchBox';
 import { motion } from 'framer-motion';
-import { User, Building2, FileText, Quote, Loader2, Search as SearchIcon, X, Clock } from 'lucide-react';
+import { User, Building2, FileText, Quote, Loader2, Search as SearchIcon, X, Clock, Tag } from 'lucide-react';
 import { cn } from '../lib/utils';
 
 const SEARCH_HISTORY_KEY = 'coauthor_search_history';
@@ -73,6 +73,43 @@ function AuthorSearchPage() {
   const { data, isLoading: loading, error } = useAuthorSearch(query, 50, 0, true, false, institutionFilter);
   const results = data?.results || [];
   const total = data?.total || 0;
+
+  const [selectedFields, setSelectedFields] = useState(new Set());
+
+  const topFields = useMemo(() => {
+    if (!results.length) return [];
+    const counts = {};
+    results.forEach((author) => {
+      (author.research_fields || []).forEach((f) => {
+        const name = f.display_name || f.name;
+        if (name) counts[name] = (counts[name] || 0) + 1;
+      });
+    });
+    return Object.entries(counts)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 8)
+      .map(([name]) => name);
+  }, [results]);
+
+  const filteredResults = useMemo(() => {
+    if (selectedFields.size === 0) return results;
+    return results.filter((author) =>
+      (author.research_fields || []).some((f) =>
+        selectedFields.has(f.display_name || f.name)
+      )
+    );
+  }, [results, selectedFields]);
+
+  const toggleField = (fieldName) => {
+    setSelectedFields((prev) => {
+      const next = new Set(prev);
+      if (next.has(fieldName)) next.delete(fieldName);
+      else next.add(fieldName);
+      return next;
+    });
+  };
+
+  const clearFields = () => setSelectedFields(new Set());
 
   const handleSearch = (newQuery) => {
     navigate(`/authors/search?q=${encodeURIComponent(newQuery)}`);
@@ -195,8 +232,36 @@ function AuthorSearchPage() {
           </div>
         )}
 
+        {/* Research Field Filter */}
+        {!loading && !error && topFields.length > 0 && (
+          <div className="flex flex-wrap items-center gap-2 mb-4">
+            <span className="flex items-center gap-1 text-sm text-muted-foreground">
+              <Tag size={16} /> 领域筛选:
+            </span>
+            {topFields.map((fieldName) => (
+              <button
+                key={fieldName}
+                onClick={() => toggleField(fieldName)}
+                className={cn(
+                  "px-2.5 py-1 text-xs rounded-full transition-colors",
+                  selectedFields.has(fieldName)
+                    ? "bg-primary text-primary-foreground"
+                    : "bg-muted text-muted-foreground hover:bg-muted/80"
+                )}
+              >
+                {fieldName}
+              </button>
+            ))}
+            {selectedFields.size > 0 && (
+              <button onClick={clearFields} className="text-xs text-muted-foreground hover:text-foreground ml-1">
+                清除
+              </button>
+            )}
+          </div>
+        )}
+
         {/* Empty State */}
-        {!loading && !error && query && results.length === 0 && (
+        {!loading && !error && query && filteredResults.length === 0 && (
           <div className="text-center py-12 space-y-3">
             <SearchIcon className="h-12 w-12 mx-auto text-muted-foreground/50" />
             <p className="text-muted-foreground">未找到匹配的作者</p>
@@ -205,9 +270,9 @@ function AuthorSearchPage() {
         )}
 
         {/* Results List */}
-        {!loading && !error && results.length > 0 && (
+        {!loading && !error && filteredResults.length > 0 && (
           <div className="space-y-3">
-            {results.map((author, index) => (
+            {filteredResults.map((author, index) => (
               <motion.div
                 key={author.id}
                 initial={{ opacity: 0, y: 20 }}
