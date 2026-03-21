@@ -140,16 +140,16 @@ function Layout({ children }) {
       </main>
 
       {/* Footer */}
-      <footer className="border-t bg-muted/20 mt-auto">
-        <div className="container mx-auto px-4 py-8">
-          <div className="flex flex-col md:flex-row justify-between items-center text-sm text-muted-foreground">
-            <p>© 2026 CoAuthorTrace. Powered by OpenAlex.</p>
-            <div className="flex space-x-4 mt-4 md:mt-0">
-              <a href="#" className="hover:text-foreground transition-colors">Privacy</a>
-              <a href="#" className="hover:text-foreground transition-colors">Terms</a>
-              <a href="#" className="hover:text-foreground transition-colors">API</a>
-            </div>
-          </div>
+      <footer data-no-print className="border-t border-border bg-card/50 py-4 mt-auto">
+        <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-muted-foreground">
+          <span>CoAuthorTrace &copy; {new Date().getFullYear()} &mdash; 学术合作者追踪系统</span>
+          <span className="flex items-center gap-3">
+            <span>Powered by OpenAlex</span>
+            <span>&middot;</span>
+            <span>GraphSAGE GNN</span>
+            <span className="hidden sm:inline">&middot;</span>
+            <kbd className="hidden sm:inline text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded border border-border">⌘K 搜索</kbd>
+          </span>
         </div>
       </footer>
     </div>
