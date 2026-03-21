@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useInstitutions, useInstitutionRanking } from '../hooks/queries';
 import ResearchFieldsBadges from '../components/ResearchFieldsBadges';
+import { useI18n } from '../contexts/I18nContext';
 import { Building2, ChevronRight, GraduationCap, FileText, Quote, Loader2, AlertCircle, ExternalLink, Download } from 'lucide-react';
 import { exportToCSV } from '../utils/export';
 import { cn } from '../lib/utils';
@@ -12,11 +13,12 @@ const DEBOUNCE_DELAY_MS = 300;
 function RankingPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [institutionQuery, setInstitutionQuery] = useState('');
+  const { t } = useI18n();
 
   useEffect(() => {
-    document.title = '机构排行 - CoAuthorTrace';
-    return () => { document.title = '论文合作者追踪系统'; };
-  }, []);
+    document.title = t('ranking.page_title');
+    return () => { document.title = t('ranking.default_title'); };
+  }, [t]);
   const [debouncedQuery, setDebouncedQuery] = useState('');
 
   const selectedInstitutionId = searchParams.get('institution_id');
@@ -49,7 +51,7 @@ function RankingPage() {
     return (
       <div className="flex flex-col items-center justify-center h-[60vh] text-muted-foreground">
         <Loader2 className="h-10 w-10 animate-spin mb-4 text-primary" />
-        <p>正在加载机构数据...</p>
+        <p>{t('ranking.loading')}</p>
       </div>
     );
   }
@@ -58,9 +60,9 @@ function RankingPage() {
     <div className="space-y-8 animate-fade-in">
       {/* Header */}
       <div>
-        <h1 className="text-3xl font-bold tracking-tight text-foreground mb-2">机构学者排行</h1>
+        <h1 className="text-3xl font-bold tracking-tight text-foreground mb-2">{t('ranking.title')}</h1>
         <p className="text-muted-foreground">
-          查看各合作机构的学者影响力排名，基于发表论文数量与引用影响力。
+          {t('ranking.subtitle')}
         </p>
       </div>
 
@@ -69,18 +71,18 @@ function RankingPage() {
         <div className="lg:col-span-3 space-y-4">
           <div className="bg-card rounded-xl border border-border shadow-sm p-4 sticky top-24">
             <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-4 px-2">
-              合作机构 ({institutions.length})
+              {t('ranking.institutions')} ({institutions.length})
             </h2>
             <div className="px-2 mb-3">
               <input
                 type="text"
                 value={institutionQuery}
                 onChange={(e) => setInstitutionQuery(e.target.value)}
-                placeholder="搜索机构..."
+                placeholder={t('ranking.search_institution')}
                 className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
               />
               {institutionsLoading && (
-                <div className="text-xs text-muted-foreground mt-2">正在更新机构列表...</div>
+                <div className="text-xs text-muted-foreground mt-2">{t('ranking.updating_list')}</div>
               )}
             </div>
             <div className="space-y-1 max-h-[calc(100vh-12rem)] overflow-y-auto pr-1 scrollbar-thin">
@@ -103,7 +105,7 @@ function RankingPage() {
                     "text-xs mt-0.5",
                     selectedInstitutionId === inst.id ? "text-primary-foreground/80" : "text-muted-foreground"
                   )}>
-                    {inst.author_count} 位学者
+                    {t('ranking.scholars_count', { count: inst.author_count })}
                   </div>
                 </button>
               ))}
@@ -117,12 +119,12 @@ function RankingPage() {
             rankingLoading ? (
               <div className="flex flex-col items-center justify-center h-64 text-muted-foreground bg-card rounded-xl border border-border">
                 <Loader2 className="h-8 w-8 animate-spin mb-3 text-primary" />
-                <p>正在计算排名数据...</p>
+                <p>{t('ranking.loading_ranking')}</p>
               </div>
             ) : rankingError ? (
               <div className="bg-destructive/10 border border-destructive/20 rounded-xl p-8 text-center text-destructive">
                 <AlertCircle className="h-10 w-10 mx-auto mb-4" />
-                <p className="font-medium">加载排名数据失败，请稍后重试</p>
+                <p className="font-medium">{t('ranking.load_error')}</p>
               </div>
             ) : ranking ? (
               <motion.div
@@ -140,7 +142,7 @@ function RankingPage() {
                         {ranking.institution_name}
                       </h2>
                       <p className="text-sm text-muted-foreground">
-                        共收录 {ranking.total} 位学者
+                        {t('ranking.total_scholars', { count: ranking.total })}
                       </p>
                     </div>
                   </div>
@@ -156,7 +158,7 @@ function RankingPage() {
                     }}
                     className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-secondary text-secondary-foreground text-sm font-medium rounded-lg hover:bg-secondary/80 transition-colors shrink-0"
                   >
-                    <Download size={14} /> 导出 CSV
+                    <Download size={14} /> {t('ranking.export_csv')}
                   </button>
                 </div>
 
@@ -164,11 +166,11 @@ function RankingPage() {
                   <table className="w-full text-sm text-left">
                     <thead className="bg-muted/50 text-muted-foreground font-medium border-b border-border">
                       <tr>
-                        <th className="py-4 px-6 w-16 text-center">排名</th>
-                        <th className="py-4 px-6">学者</th>
-                        <th className="py-4 px-6 hidden md:table-cell">研究领域</th>
-                        <th className="py-4 px-6 text-right w-24">论文数</th>
-                        <th className="py-4 px-6 text-right w-24">被引数</th>
+                        <th className="py-4 px-6 w-16 text-center">{t('ranking.rank')}</th>
+                        <th className="py-4 px-6">{t('ranking.scholar')}</th>
+                        <th className="py-4 px-6 hidden md:table-cell">{t('ranking.research_fields')}</th>
+                        <th className="py-4 px-6 text-right w-24">{t('ranking.papers_count')}</th>
+                        <th className="py-4 px-6 text-right w-24">{t('ranking.citations_count')}</th>
                         <th className="py-4 px-6 text-center w-20">ORCID</th>
                       </tr>
                     </thead>
@@ -232,7 +234,7 @@ function RankingPage() {
           ) : (
             <div className="flex flex-col items-center justify-center h-64 text-muted-foreground bg-card rounded-xl border border-dashed border-border">
               <Building2 className="h-12 w-12 opacity-20 mb-4" />
-              <p>请从左侧选择一个机构查看排名</p>
+              <p>{t('ranking.select_institution')}</p>
             </div>
           )}
         </div>
