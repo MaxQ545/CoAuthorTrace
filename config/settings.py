@@ -154,6 +154,7 @@ class AdminSettings(BaseSettings):
     )
 
     password: str = ""
+    viewer_password: Optional[str] = None  # If set, enables viewer role
     jwt_secret: str = ""
     jwt_expiry_hours: int = 24
     geoip_db_path: str = "data/GeoLite2-City.mmdb"

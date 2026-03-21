@@ -15,7 +15,7 @@ from sqlalchemy import func, text
 from sqlalchemy.orm import Session
 
 from config.settings import settings
-from src.api.auth import create_access_token, require_admin, verify_password
+from src.api.auth import create_access_token, require_admin, require_role, verify_password
 from src.database.models import (
     Author,
     CrawlTarget,
@@ -132,6 +132,7 @@ from src.api.deps import get_db as _get_db
 # ---------------------------------------------------------------------------
 class LoginRequest(BaseModel):
     password: str
+    username: Optional[str] = None  # Optional for backward compatibility
 
 
 class TrackRequest(BaseModel):
@@ -169,14 +170,15 @@ async def admin_login(body: LoginRequest, request: Request):
             headers={"Retry-After": str(_RATE_LIMIT_COOLDOWN)},
         )
 
-    if not verify_password(body.password):
+    user_info = verify_password(body.password, body.username)
+    if not user_info:
         _login_attempts.setdefault(ip, []).append(time.monotonic())
         raise HTTPException(status_code=401, detail="Invalid password")
 
     # Successful login — clear any tracked failures for this IP
     _login_attempts.pop(ip, None)
-    token = create_access_token()
-    return {"ok": True, "token": token}
+    token = create_access_token(username=user_info["username"], role=user_info["role"])
+    return {"ok": True, "token": token, "role": user_info["role"]}
 
 
 @router.post("/track")
@@ -351,7 +353,7 @@ async def get_crawl_status(
 @router.post("/crawl/start")
 async def start_crawl(
     background_tasks: BackgroundTasks,
-    _admin: str = Depends(require_admin),
+    _admin: dict = Depends(require_role("admin")),
     db: Session = Depends(_get_db),
 ):
     """Trigger the multi-institution crawler in the background."""
@@ -497,7 +499,7 @@ async def retry_crawl_institution(
 @router.put("/crawl/reorder")
 async def reorder_crawl_queue(
     body: ReorderRequest,
-    _admin: str = Depends(require_admin),
+    _admin: dict = Depends(require_role("admin")),
     db: Session = Depends(_get_db),
 ):
     """Update queue_position for institutions."""
@@ -616,7 +618,7 @@ async def search_openalex_institution(
 @router.post("/crawl/targets")
 async def add_crawl_target(
     body: CrawlTargetRequest,
-    _admin: str = Depends(require_admin),
+    _admin: dict = Depends(require_role("admin")),
     db: Session = Depends(_get_db),
 ):
     """Add a new crawl target."""
@@ -632,7 +634,7 @@ async def add_crawl_target(
 @router.delete("/crawl/targets/{institution_id}")
 async def delete_crawl_target(
     institution_id: str,
-    _admin: str = Depends(require_admin),
+    _admin: dict = Depends(require_role("admin")),
     db: Session = Depends(_get_db),
 ):
     """Delete a crawl target by institution_id."""
