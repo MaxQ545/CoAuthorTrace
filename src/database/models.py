@@ -70,6 +70,10 @@ class Author(Base):
             "last_known_institution_id",
             works_count.desc(),
         ),
+        # NOTE: A GIN trigram index (idx_author_display_name_trgm) is created
+        # via scripts/migrate_search_index.py for fast ILIKE search on
+        # display_name.  SQLAlchemy does not support GIN indexes natively,
+        # so it is managed outside the ORM.
     )
 
 

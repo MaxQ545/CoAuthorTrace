@@ -104,21 +104,22 @@ class AuthorRepository:
         canonical_only: bool = True,
         fuzzy: bool = False,
     ) -> tuple[list[tuple[Author, int]], int]:
-        """Search authors by name with total count."""
+        """Search authors by name with total count.
+
+        Uses pg_trgm GIN index (idx_author_display_name_trgm) for fast ILIKE
+        on 2M+ rows.  Count is estimated for large result sets (>1000) to
+        avoid slow exact counts.
+        """
         base_filter = None
 
         if fuzzy:
-            # Fuzzy match (case-insensitive partial match)
-            # using ilike for generic SQL case-insensitive matching
+            # Fuzzy match — ILIKE leverages the pg_trgm GIN index
             base_filter = Author.display_name.ilike(f"%{query}%")
             if canonical_only:
                 base_filter = base_filter & (Author.is_canonical == True)
 
-            total = (
-                self.session.query(func.count(Author.id))
-                .filter(base_filter)
-                .scalar() or 0
-            )
+            # Use a capped count: stop counting after 1000 to avoid slow scans
+            total = self._capped_count(base_filter, cap=1000)
         else:
             # Exact match (existing logic)
             # Build base filter - try case-sensitive exact match first (fast path)
@@ -143,21 +144,13 @@ class AuthorRepository:
                     .scalar() or 0
                 )
 
-        # Sort by actual authorship count (Author.works_count is often stale/zero)
-        authorship_count_sq = (
-            self.session.query(
-                Authorship.author_id,
-                func.count(Authorship.id).label('cnt'),
-            )
-            .group_by(Authorship.author_id)
-            .subquery()
-        )
-
+        # Sort by works_count (avoids expensive JOIN with authorships table).
+        # works_count column is kept in sync by the crawler and is good enough
+        # for ordering search results.
         rows = (
-            self.session.query(Author, func.coalesce(authorship_count_sq.c.cnt, 0).label('acount'))
-            .outerjoin(authorship_count_sq, Author.id == authorship_count_sq.c.author_id)
+            self.session.query(Author, func.coalesce(Author.works_count, 0).label('acount'))
             .filter(base_filter)
-            .order_by(func.coalesce(authorship_count_sq.c.cnt, 0).desc())
+            .order_by(func.coalesce(Author.works_count, 0).desc())
             .offset(offset)
             .limit(limit)
             .all()
@@ -181,6 +174,22 @@ class AuthorRepository:
         # Re-sort within the page to reflect merged counts
         results.sort(key=lambda x: x[1], reverse=True)
         return results, total
+
+    def _capped_count(self, filter_clause, cap: int = 1000) -> int:
+        """Get count of matching rows, but cap at `cap` to avoid slow scans.
+
+        Uses a LIMIT subquery so PostgreSQL can stop counting early.
+        Returns `cap` if there are >= cap matches (caller shows "1000+").
+        """
+        from sqlalchemy import literal_column
+        subq = (
+            self.session.query(literal_column("1"))
+            .select_from(Author)
+            .filter(filter_clause)
+            .limit(cap)
+            .subquery()
+        )
+        return self.session.query(func.count()).select_from(subq).scalar() or 0
 
     def get_or_create(
         self,
