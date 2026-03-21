@@ -1,11 +1,13 @@
-import { useState, useRef, useEffect, useCallback } from 'react'
-import { Plus, Trash2, Download, Search, Loader2 } from 'lucide-react'
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
+import { Plus, Trash2, Download, Search, Loader2, History } from 'lucide-react'
 import { Skeleton } from '@/components/ui/skeleton'
+import { toast } from 'sonner'
 import Section from './Section'
 import CrawlStatusCards from './CrawlStatusCards'
 import CrawlBatchControls from './CrawlBatchControls'
 import CrawlQueueTable from './CrawlQueueTable'
 import CrawlDetailSheet from './CrawlDetailSheet'
+import StatusBadge from './StatusBadge'
 import api from '@/api/client'
 import {
   useAdminCrawlStatus,
@@ -24,6 +26,7 @@ export default function CrawlTab() {
   const [selectedInst, setSelectedInst] = useState(null)
   const searchRef = useRef(null)
   const debounceRef = useRef(null)
+  const prevStatusMapRef = useRef(null)
 
   const { data: crawlData, isLoading: statusLoading } = useAdminCrawlStatus()
   const { data: targets, isLoading: targetsLoading } = useAdminCrawlTargets()
@@ -34,6 +37,52 @@ export default function CrawlTab() {
 
   // Prefer progress data (richer), fall back to crawlData
   const displayData = progress || crawlData
+
+  // --- Crawl status change notifications ---
+  useEffect(() => {
+    if (!displayData?.institutions) return
+    const currentMap = new Map(
+      displayData.institutions.map(i => [i.institution_id, i])
+    )
+    const prev = prevStatusMapRef.current
+    prevStatusMapRef.current = currentMap
+
+    if (!prev) return // first load, no notifications
+
+    for (const [id, inst] of currentMap) {
+      const prevInst = prev.get(id)
+      if (!prevInst || prevInst.status === inst.status) continue
+
+      const name = inst.institution_name || id
+      if (inst.status === 'completed') {
+        toast.success(`爬取完成: ${name}`)
+      } else if (inst.status === 'failed') {
+        toast.error(`爬取失败: ${name}${inst.error_message ? ` — ${inst.error_message}` : ''}`)
+      } else if (inst.status === 'running' && prevInst.status !== 'pause_requested') {
+        toast.info(`爬取已开始: ${name}`)
+      } else if (inst.status === 'paused') {
+        toast.warning(`爬取已暂停: ${name}`)
+      } else if (inst.status === 'stopped') {
+        toast.info(`爬取已停止: ${name}`)
+      }
+    }
+  }, [displayData])
+
+  // --- Recent crawl events (completed/failed with timestamps) ---
+  const recentEvents = useMemo(() => {
+    if (!displayData?.institutions) return []
+    return displayData.institutions
+      .filter(i => ['completed', 'failed', 'stopped'].includes(i.status) && (i.last_crawl_completed || i.started_at))
+      .map(i => ({
+        id: i.institution_id,
+        name: i.institution_name || i.institution_id,
+        status: i.status,
+        time: i.last_crawl_completed || i.started_at,
+        error: i.error_message,
+      }))
+      .sort((a, b) => new Date(b.time) - new Date(a.time))
+      .slice(0, 5)
+  }, [displayData])
 
   // Debounced search for OpenAlex institutions
   const handleSearch = useCallback((query) => {
@@ -195,6 +244,33 @@ export default function CrawlTab() {
       <Section title="Crawl Queue">
         <CrawlQueueTable data={displayData} onDetail={(inst) => setSelectedInst(inst)} />
       </Section>
+
+      {/* Recent crawl events */}
+      {recentEvents.length > 0 && (
+        <Section title="最近爬取记录">
+          <div className="space-y-2">
+            {recentEvents.map((evt) => (
+              <div
+                key={evt.id}
+                className="flex items-center justify-between gap-3 py-1.5 border-b border-border/50 last:border-0"
+              >
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <StatusBadge status={evt.status} />
+                  <span className="text-sm font-medium truncate">{evt.name}</span>
+                  {evt.error && (
+                    <span className="text-xs text-red-500 truncate max-w-[200px]" title={evt.error}>
+                      {evt.error}
+                    </span>
+                  )}
+                </div>
+                <span className="text-xs text-muted-foreground font-mono whitespace-nowrap">
+                  {new Date(evt.time).toLocaleString()}
+                </span>
+              </div>
+            ))}
+          </div>
+        </Section>
+      )}
 
       {/* Detail sheet */}
       <CrawlDetailSheet
