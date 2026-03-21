@@ -25,6 +25,7 @@ class ApiClient {
       // 401 interceptor — auto-logout on expired/invalid token
       if (response.status === 401 && !endpoint.startsWith('/admin/login')) {
         sessionStorage.removeItem('admin_token');
+        sessionStorage.removeItem('admin_role');
         window.location.href = '/admin/login';
         throw new Error('Session expired');
       }
@@ -102,10 +103,12 @@ class ApiClient {
   }
 
   // Admin endpoints
-  async adminLogin(password) {
+  async adminLogin(password, username = null) {
+    const body = { password };
+    if (username) body.username = username;
     return this.request('/admin/login', {
       method: 'POST',
-      body: JSON.stringify({ password }),
+      body: JSON.stringify(body),
     });
   }
 
