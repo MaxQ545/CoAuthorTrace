@@ -43,6 +43,29 @@ test.describe('Author Search Page', () => {
     expect(count).toBe(0);
   });
 
+  test('should show research field filter chips after searching', async ({ page }) => {
+    await safeGoto(page, '/authors/search?q=Zhang');
+
+    // Wait for results to load
+    const resultCards = page.locator('a[href^="/author/"]');
+    const hasResults = await resultCards.first().isVisible({ timeout: 20000 }).catch(() => false);
+
+    if (!hasResults) {
+      test.skip(true, 'Search API did not return results in time');
+      return;
+    }
+
+    // Research field filter chips are rendered as buttons with field names
+    // They appear in a rounded-full style row above search results
+    const fieldChips = page.locator('button.rounded-full').filter({ hasNotText: /搜索|清除/ });
+    const chipCount = await fieldChips.count();
+    expect(chipCount).toBeGreaterThan(0);
+
+    // Verify at least one chip has text content (a field name)
+    const firstChipText = await fieldChips.first().textContent();
+    expect(firstChipText?.trim().length).toBeGreaterThan(0);
+  });
+
   test('should navigate to author page when clicking a search result', async ({ page }) => {
     await safeGoto(page, '/authors/search?q=Zhang');
 

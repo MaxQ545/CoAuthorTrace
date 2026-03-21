@@ -39,6 +39,27 @@ test.describe('Home Page', () => {
     expect(statsVisible || pulseVisible || errorVisible).toBeTruthy();
   });
 
+  test('should have a print button on author detail page', async ({ page }) => {
+    // Navigate to search, find a result, click it, then check for print button
+    await safeGoto(page, '/authors/search?q=Zhang');
+
+    const resultLinks = page.locator('a[href^="/author/"]');
+    const hasResults = await resultLinks.first().isVisible({ timeout: 20000 }).catch(() => false);
+
+    if (!hasResults) {
+      test.skip(true, 'Search API did not return results in time');
+      return;
+    }
+
+    // Click the first author result
+    await resultLinks.first().click();
+    await page.waitForURL(/\/author\//, { timeout: 10000 });
+
+    // Verify the print button exists (it has title="打印学者档案" and contains text "打印")
+    const printButton = page.locator('button', { hasText: '打印' });
+    await expect(printButton).toBeVisible({ timeout: 10000 });
+  });
+
   test('should have a skip-to-content accessibility link', async ({ page }) => {
     await safeGoto(page, '/');
     const skipLink = page.locator('a[href="#main-content"]');

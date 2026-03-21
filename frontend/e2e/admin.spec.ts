@@ -38,6 +38,22 @@ test.describe('Admin Login Page', () => {
     await expect(signingIn.or(errorMessage)).toBeVisible({ timeout: 5000 });
   });
 
+  test('should return prometheus metrics with coauthor_ prefix', async ({ request }) => {
+    let response;
+    try {
+      response = await request.get('http://121.196.234.6:8000/metrics', { timeout: 15000 });
+    } catch {
+      test.skip(true, 'Metrics endpoint unreachable from test runner');
+      return;
+    }
+    if (!response.ok()) {
+      test.skip(true, `Metrics endpoint returned ${response.status()} — not deployed`);
+      return;
+    }
+    const body = await response.text();
+    expect(body).toContain('coauthor_');
+  });
+
   test('should rate-limit rapid login attempts', async ({ request }) => {
     const loginUrl = 'http://121.196.234.6:8000/api/v1/admin/login';
     const attempts = 10;
