@@ -1,32 +1,12 @@
-import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import TimeRangeSelector from './TimeRangeSelector';
-import { LayoutDashboard, Network, Trophy, BookOpen, Sun, Moon, ArrowRightLeft, Search } from 'lucide-react';
+import { LayoutDashboard, Network, Trophy, BookOpen, Sun, Moon } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '../lib/utils';
 import { useState, useEffect } from 'react';
 
 function Layout({ children }) {
   const location = useLocation();
-  const navigate = useNavigate();
-
-  // Cmd+K / Ctrl+K global shortcut to focus search
-  useEffect(() => {
-    const handleKeyDown = (e) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
-        e.preventDefault();
-        if (location.pathname !== '/authors/search') {
-          navigate('/authors/search');
-        }
-        // Use setTimeout to allow navigation/render to complete before focusing
-        setTimeout(() => {
-          document.getElementById('search-input')?.focus();
-        }, 100);
-      }
-    };
-    document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [navigate, location.pathname]);
-
   const [isDark, setIsDark] = useState(() => {
     // Check localStorage or system preference on initial load
     if (typeof window !== 'undefined') {
@@ -53,16 +33,12 @@ function Layout({ children }) {
     { path: '/', label: '首页', icon: LayoutDashboard },
     { path: '/ranking', label: '机构排行', icon: Trophy },
     { path: '/network', label: '合作网络', icon: Network },
-    { path: '/compare', label: '对比', icon: ArrowRightLeft },
   ];
 
   return (
     <div className="min-h-screen bg-background text-foreground flex flex-col transition-colors duration-300">
-      <a href="#main-content" className="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-50 focus:bg-white focus:text-blue-600 focus:px-4 focus:py-2 focus:rounded focus:shadow-lg dark:focus:bg-gray-800 dark:focus:text-blue-400">
-        Skip to content
-      </a>
       {/* Navbar */}
-      <header data-no-print className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+      <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
         <div className="container mx-auto px-4 h-16 flex items-center justify-between">
           <Link to="/" className="flex items-center space-x-2 group">
             <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center text-primary-foreground transform group-hover:rotate-12 transition-transform">
@@ -122,32 +98,6 @@ function Layout({ children }) {
                );
             })}
 
-            {/* Search Shortcut Link */}
-            <Link
-              to="/authors/search"
-              className={cn(
-                "hidden md:flex items-center space-x-1.5 px-3 py-1.5 rounded-md text-sm transition-all duration-200 border border-border",
-                location.pathname === '/authors/search'
-                  ? "text-primary bg-primary/10"
-                  : "text-muted-foreground hover:text-foreground hover:bg-muted"
-              )}
-            >
-              <Search size={14} />
-              <span>搜索</span>
-              <kbd className="text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded border border-border ml-1">⌘K</kbd>
-            </Link>
-            <Link
-              to="/authors/search"
-              className={cn(
-                "p-2 rounded-md text-sm font-medium transition-all duration-200 md:hidden",
-                location.pathname === '/authors/search'
-                  ? "text-primary bg-primary/10"
-                  : "text-muted-foreground hover:text-foreground hover:bg-muted"
-              )}
-            >
-              <Search size={20} />
-            </Link>
-
             {/* Theme Toggle Button */}
             <button
               onClick={toggleTheme}
@@ -171,14 +121,14 @@ function Layout({ children }) {
       </header>
 
       {/* Time Filter Banner */}
-      <div data-no-print className="bg-muted/30 border-b">
+      <div className="bg-muted/30 border-b">
         <div className="container mx-auto px-4 py-2">
            <TimeRangeSelector />
         </div>
       </div>
 
       {/* Main Content */}
-      <main id="main-content" tabIndex={-1} className="flex-1 container mx-auto px-4 py-8 outline-none">
+      <main className="flex-1 container mx-auto px-4 py-8">
         <motion.div
           key={location.pathname}
           initial={{ opacity: 0, y: 10 }}
@@ -190,16 +140,16 @@ function Layout({ children }) {
       </main>
 
       {/* Footer */}
-      <footer data-no-print className="border-t bg-muted/20 mt-auto">
-        <div className="container mx-auto px-4 py-8">
-          <div className="flex flex-col md:flex-row justify-between items-center text-sm text-muted-foreground">
-            <p>© 2026 CoAuthorTrace. Powered by OpenAlex.</p>
-            <div className="flex space-x-4 mt-4 md:mt-0">
-              <a href="#" className="hover:text-foreground transition-colors">Privacy</a>
-              <a href="#" className="hover:text-foreground transition-colors">Terms</a>
-              <a href="#" className="hover:text-foreground transition-colors">API</a>
-            </div>
-          </div>
+      <footer data-no-print className="border-t border-border bg-card/50 py-4 mt-auto">
+        <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-muted-foreground">
+          <span>CoAuthorTrace &copy; {new Date().getFullYear()} &mdash; 学术合作者追踪系统</span>
+          <span className="flex items-center gap-3">
+            <span>Powered by OpenAlex</span>
+            <span>&middot;</span>
+            <span>GraphSAGE GNN</span>
+            <span className="hidden sm:inline">&middot;</span>
+            <kbd className="hidden sm:inline text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded border border-border">⌘K 搜索</kbd>
+          </span>
         </div>
       </footer>
     </div>
