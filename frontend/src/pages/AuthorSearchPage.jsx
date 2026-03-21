@@ -1,18 +1,63 @@
+import { useState, useMemo } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useAuthorSearch } from '../hooks/queries';
 import SearchBox from '../components/SearchBox';
 import { motion } from 'framer-motion';
-import { User, Building2, FileText, Quote, Loader2, Search as SearchIcon } from 'lucide-react';
+import { User, Building2, FileText, Quote, Loader2, Search as SearchIcon, Tag } from 'lucide-react';
 import { cn } from '../lib/utils';
 
 function AuthorSearchPage() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const query = searchParams.get('q') || '';
+  const [selectedFields, setSelectedFields] = useState(new Set());
 
   const { data, isLoading: loading, error } = useAuthorSearch(query, 50, 0, true);
   const results = data?.results || [];
   const total = data?.total || 0;
+
+  // Extract top 8 most common research fields from results
+  const topFields = useMemo(() => {
+    const fieldCounts = new Map();
+    for (const author of results) {
+      if (author.research_fields) {
+        for (const field of author.research_fields) {
+          const name = field.display_name || field.name;
+          if (name) {
+            fieldCounts.set(name, (fieldCounts.get(name) || 0) + 1);
+          }
+        }
+      }
+    }
+    return [...fieldCounts.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 8)
+      .map(([name]) => name);
+  }, [results]);
+
+  // Filter results by selected fields (OR logic)
+  const filteredResults = useMemo(() => {
+    if (selectedFields.size === 0) return results;
+    return results.filter((author) =>
+      author.research_fields?.some((field) =>
+        selectedFields.has(field.display_name || field.name)
+      )
+    );
+  }, [results, selectedFields]);
+
+  const toggleField = (fieldName) => {
+    setSelectedFields((prev) => {
+      const next = new Set(prev);
+      if (next.has(fieldName)) {
+        next.delete(fieldName);
+      } else {
+        next.add(fieldName);
+      }
+      return next;
+    });
+  };
+
+  const clearFields = () => setSelectedFields(new Set());
 
   const handleSearch = (newQuery) => {
     navigate(`/authors/search?q=${encodeURIComponent(newQuery)}`);
@@ -48,6 +93,38 @@ function AuthorSearchPage() {
           </div>
         )}
 
+        {/* Research Field Filter Chips */}
+        {!loading && !error && topFields.length > 0 && (
+          <div className="flex items-center gap-2 flex-wrap">
+            <div className="flex items-center gap-1.5 text-sm text-muted-foreground mr-1">
+              <Tag size={16} />
+              <span>领域筛选</span>
+            </div>
+            {topFields.map((fieldName) => (
+              <button
+                key={fieldName}
+                onClick={() => toggleField(fieldName)}
+                className={cn(
+                  "px-3 py-1 text-xs rounded-full transition-colors duration-150",
+                  selectedFields.has(fieldName)
+                    ? "bg-primary text-primary-foreground"
+                    : "bg-muted text-muted-foreground hover:bg-muted/80"
+                )}
+              >
+                {fieldName}
+              </button>
+            ))}
+            {selectedFields.size > 0 && (
+              <button
+                onClick={clearFields}
+                className="px-3 py-1 text-xs rounded-full border border-border text-muted-foreground hover:text-foreground transition-colors"
+              >
+                清除
+              </button>
+            )}
+          </div>
+        )}
+
         {/* Loading State */}
         {loading && (
           <div className="flex items-center justify-center py-12">
@@ -64,7 +141,7 @@ function AuthorSearchPage() {
         )}
 
         {/* Empty State */}
-        {!loading && !error && query && results.length === 0 && (
+        {!loading && !error && query && filteredResults.length === 0 && (
           <div className="text-center py-12 space-y-3">
             <SearchIcon className="h-12 w-12 mx-auto text-muted-foreground/50" />
             <p className="text-muted-foreground">未找到匹配的作者</p>
@@ -73,9 +150,9 @@ function AuthorSearchPage() {
         )}
 
         {/* Results List */}
-        {!loading && !error && results.length > 0 && (
+        {!loading && !error && filteredResults.length > 0 && (
           <div className="space-y-3">
-            {results.map((author, index) => (
+            {filteredResults.map((author, index) => (
               <motion.div
                 key={author.id}
                 initial={{ opacity: 0, y: 20 }}
