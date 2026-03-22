@@ -9,11 +9,10 @@ from contextvars import ContextVar
 from contextlib import asynccontextmanager
 from typing import Optional
 
-from fastapi import FastAPI, Depends, Request, Response
+from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from starlette.middleware.gzip import GZipMiddleware
-from starlette.middleware.base import BaseHTTPMiddleware
 
 from config.settings import settings
 from src.database.models import init_database, get_session
