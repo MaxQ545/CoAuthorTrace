@@ -261,7 +261,7 @@ class CoAuthoredPapersResponse(BaseModel):
 from src.api.deps import get_db
 
 
-@router.get("/search", response_model=AuthorSearchResponse)
+@router.get("/search", response_model=AuthorSearchResponse, summary="Search authors by name")
 async def search_authors(
     q: str = Query(..., min_length=1, description="Search query"),
     limit: int = Query(20, ge=1, le=100, description="Maximum results"),
@@ -521,7 +521,7 @@ async def get_institution_ranking(
     return response
 
 
-@router.get("/{author_id}", response_model=AuthorResponse)
+@router.get("/{author_id}", response_model=AuthorResponse, summary="Get author profile")
 async def get_author(
     author_id: str,
     db: Session = Depends(get_db),
@@ -706,7 +706,7 @@ async def get_network_metrics(
     return response
 
 
-@router.get("/{author_id}/collaborators")
+@router.get("/{author_id}/collaborators", summary="Get author's collaborators")
 async def get_collaborators(
     author_id: str,
     limit: int = Query(50, ge=1, le=200, description="Maximum results"),

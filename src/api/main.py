@@ -29,16 +29,27 @@ async def lifespan(app: FastAPI):
     logger.info("Shutting down Coauthor Tracing API...")
 
 
+tags_metadata = [
+    {"name": "authors", "description": "Author search, profiles, collaborators, and publication data"},
+    {"name": "network", "description": "Collaboration network visualization with SSE streaming"},
+    {"name": "system", "description": "System status, configuration, and health checks"},
+    {"name": "admin", "description": "Admin dashboard, crawl management, and analytics"},
+]
+
+
 def create_app() -> FastAPI:
     """Create and configure FastAPI application."""
     app = FastAPI(
-        title="Coauthor Tracing API",
-        description="API for tracking and analyzing paper co-authorship relationships",
-        version="1.0.0",
+        title="CoAuthorTrace API",
+        description="Academic co-authorship tracking and collaboration network analysis API. Powered by OpenAlex data and GraphSAGE GNN.",
+        version="2.0.0",
         lifespan=lifespan,
         docs_url="/api/docs",
         redoc_url="/api/redoc",
         openapi_url="/api/openapi.json",
+        contact={"name": "CoAuthorTrace", "url": "https://github.com/MaxQ545/CoAuthorTrace"},
+        license_info={"name": "MIT"},
+        openapi_tags=tags_metadata,
     )
 
     # CORS middleware
@@ -76,8 +87,8 @@ def create_app() -> FastAPI:
     async def root():
         """Root endpoint."""
         return {
-            "name": "Coauthor Tracing API",
-            "version": "1.0.0",
+            "name": "CoAuthorTrace API",
+            "version": "2.0.0",
             "docs": "/api/docs",
         }
 
